@@ -10,6 +10,10 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from torchvision.models import resnet50, ResNet50_Weights
 
+# Tạo các cặp dữ liệu (positive/negative pairs)
+from itertools import product
+import random
+
 # Đọc dữ liệu từ file CSV
 data = pd.read_csv('books_data.csv')
 dataset = []
@@ -62,13 +66,20 @@ def create_image_embeddings(data):
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-    def get_image_embedding(image):
-        image = preprocess(image).unsqueeze(0)
-        with torch.no_grad():
-            features = model(image)
-        return features.squeeze().numpy()
+    def get_image_embedding(idx, image):
+        try:
+            image = preprocess(image).unsqueeze(0)
+            with torch.no_grad():
+                features = model(image)
+            return features.squeeze().numpy()
+        except:
+            print(idx)
+            
 
-    return np.array([get_image_embedding(d['image']) for d in data])
+    return np.array([
+        get_image_embedding(idx, d['image'])
+        for idx, d in enumerate(data)
+    ])
 
 
 # Tạo embedding văn bản và ảnh
@@ -85,20 +96,30 @@ for idx, d in enumerate(dataset):
     d['image_embedding'] = image_embeddings[idx]
 
 # Tạo các cặp dữ liệu (positive/negative pairs)
-def create_pairs(data):
+from itertools import product
+import random
+
+# Tạo các cặp dữ liệu (positive/negative pairs) hiệu quả
+def create_pairs(data, num_negative_samples=1):
     pairs = []
     labels = []
-    for i, item_a in enumerate(data):
-        for j, item_b in enumerate(data):
-            if i == j:
-                # Positive Pair: Ảnh và text tương ứng
-                pairs.append((item_a['image_embedding'], item_a['text_embedding']))
-                labels.append(1)
-            else:
-                # Negative Pair: Ảnh và text không tương ứng
-                pairs.append((item_a['image_embedding'], item_b['text_embedding']))
-                labels.append(0)
+
+    # Tạo positive pairs
+    for item in data:
+        pairs.append((item['image_embedding'], item['text_embedding']))
+        labels.append(1)
+
+    # Tạo negative pairs
+    data_len = len(data)
+    for _ in range(num_negative_samples * data_len):  # Số lượng mẫu âm
+        img_idx = random.randint(0, data_len - 1)  # Chọn ngẫu nhiên ảnh
+        text_idx = random.randint(0, data_len - 1)  # Chọn ngẫu nhiên văn bản
+        if img_idx != text_idx:  # Đảm bảo không chọn cặp giống nhau
+            pairs.append((data[img_idx]['image_embedding'], data[text_idx]['text_embedding']))
+            labels.append(0)
+
     return np.array(pairs), np.array(labels)
+
 
 pairs, labels = create_pairs(dataset)
 
