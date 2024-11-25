@@ -119,6 +119,9 @@ def create_pairs(data, num_negative_samples=1):
             labels.append(0)
 
     return np.array(pairs), np.array(labels)
+    #vấn đề ở chỗ nó duyệt toàn bộ dữ liệu hai lần để tạo tất cả các cặp. Với một dataset lớn, điều này sẽ tốn rất nhiều thời gian và bộ nhớ, dẫn đến lỗi khi chạy.
+    #ValueError: setting an array element with a sequence. 
+    # The requested array has an inhomogeneous shape after 2 dimensions. The detected shape was (4709, 2) + inhomogeneous part.
 
 
 pairs, labels = create_pairs(dataset)
