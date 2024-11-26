@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import torch
 import torchvision.transforms as transforms
 from PIL import Image
@@ -9,8 +9,6 @@ import os
 import joblib
 import pytesseract  # Thêm thư viện Tesseract OCR
 from flask_cors import CORS
-import os
-from flask import send_from_directory
 
 # Khởi tạo Flask app
 app = Flask(__name__)
@@ -57,7 +55,7 @@ model.eval()
 
 # Tiền xử lý ảnh cho mô hình ResNet-50
 def preprocess_image(image_path):
-    transform = transforms.Compose([
+    transform = transforms.Compose([ 
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -88,7 +86,6 @@ def create_image_embedding(image_path):
 @app.route('/')
 def index():
     return send_from_directory(os.getcwd(), 'frontend.html')
-
 
 # Tìm kiếm sách dựa trên ảnh hoặc tiêu đề
 @app.route('/search', methods=['POST'])
@@ -140,4 +137,4 @@ def search_books():
     return jsonify(response)
 
 if __name__ == '__main__':
-    app.run(debug=True,port = '5000')
+    app.run(debug=True, port=5000)
