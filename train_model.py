@@ -103,6 +103,10 @@ for epoch in range(num_epochs):
         running_loss += loss.item()
     print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss / len(train_loader):.4f}")
 
+# Lưu mô hình sau khi huấn luyện xong
+torch.save(model.state_dict(), 'siamese_model.pth')
+
+print("Model has been saved.")
 # Đánh giá trên tập test
 model.eval()
 y_true = []

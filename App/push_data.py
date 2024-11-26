@@ -9,8 +9,8 @@ db = client["bookstore"]  # Tên cơ sở dữ liệu
 collection = db["books"]  # Tên collection
 
 # Đường dẫn tới file CSV và thư mục chứa ảnh
-csv_file_path = "./craw_image_data/books_data.csv"  # File CSV chứa tên sách và đường dẫn ảnh
-image_folder_path = "./craw_image_data/images"  # Thư mục chứa ảnh
+csv_file_path = "./books_data.csv"  # File CSV chứa tên sách và đường dẫn ảnh
+image_folder_path = "./static/images"  # Thư mục chứa ảnh
 
 # Kiểm tra xem thư mục ảnh có tồn tại hay không
 if not os.path.exists(image_folder_path):
