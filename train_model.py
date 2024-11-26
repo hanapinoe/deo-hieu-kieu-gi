@@ -2,12 +2,12 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch.utils.data import DataLoader, Dataset
-from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 
 # Load dữ liệu
-train_pairs = np.load('train_pairs.npy')
+train_pairs = np.load('train_pairs.npy', allow_pickle=True)  # Đảm bảo dtype là object
 train_labels = np.load('train_labels.npy')
-test_pairs = np.load('test_pairs.npy')
+test_pairs = np.load('test_pairs.npy', allow_pickle=True)
 test_labels = np.load('test_labels.npy')
 
 # Dataset cho contrastive learning
@@ -20,10 +20,15 @@ class ContrastiveDataset(Dataset):
         return len(self.labels)
 
     def __getitem__(self, idx):
-        pair = self.pairs[idx]
+        img_emb, text_emb = self.pairs[idx]  # Tách cặp embedding ảnh và văn bản
         label = self.labels[idx]
-        return torch.tensor(pair[0], dtype=torch.float32), torch.tensor(pair[1], dtype=torch.float32), torch.tensor(label, dtype=torch.float32)
+        return (
+            torch.tensor(img_emb, dtype=torch.float32),
+            torch.tensor(text_emb, dtype=torch.float32),
+            torch.tensor(label, dtype=torch.float32)
+        )
 
+# Tạo Dataset và DataLoader
 train_dataset = ContrastiveDataset(train_pairs, train_labels)
 test_dataset = ContrastiveDataset(test_pairs, test_labels)
 
@@ -63,8 +68,8 @@ class ContrastiveLoss(nn.Module):
                label * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
         return loss.mean()
 
-# Khởi tạo model, optimizer, và loss
-embedding_dim = train_pairs.shape[2]
+# Khởi tạo mô hình, loss, và optimizer
+embedding_dim = train_pairs[0][0].shape[0]  # Lấy số chiều từ embedding ảnh
 model = SiameseNetwork(embedding_dim)
 criterion = ContrastiveLoss(margin=1.0)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -81,7 +86,7 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
         running_loss += loss.item()
-    print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss / len(train_loader)}")
+    print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss / len(train_loader):.4f}")
 
 # Đánh giá trên tập test
 model.eval()
@@ -92,11 +97,13 @@ with torch.no_grad():
         output1, output2 = model(img_emb, text_emb)
         euclidean_distance = nn.functional.pairwise_distance(output1, output2)
         predictions = (euclidean_distance < 0.5).float()
-        y_true.extend(label.numpy())
-        y_pred.extend(predictions.numpy())
+        y_true.extend(label.cpu().numpy())
+        y_pred.extend(predictions.cpu().numpy())
 
-# Precision, Recall, F1-Score
+# Tính toán Precision, Recall, F1-Score và Accuracy
 precision = precision_score(y_true, y_pred)
 recall = recall_score(y_true, y_pred)
 f1 = f1_score(y_true, y_pred)
-print(f"Precision: {precision}, Recall: {recall}, F1-Score: {f1}")
+accuracy = accuracy_score(y_true, y_pred)
+
+print(f"Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1-Score: {f1:.4f}")
