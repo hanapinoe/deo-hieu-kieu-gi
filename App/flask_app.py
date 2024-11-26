@@ -9,6 +9,8 @@ import os
 import joblib
 import pytesseract  # Thêm thư viện Tesseract OCR
 from flask_cors import CORS
+import os
+from flask import send_from_directory
 
 # Khởi tạo Flask app
 app = Flask(__name__)
@@ -82,6 +84,11 @@ def create_image_embedding(image_path):
     with torch.no_grad():
         img_embedding, _ = model(image_tensor.view(-1, img_embedding_dim))
     return img_embedding.numpy()
+
+@app.route('/')
+def index():
+    return send_from_directory(os.getcwd(), 'frontend.html')
+
 
 # Tìm kiếm sách dựa trên ảnh hoặc tiêu đề
 @app.route('/search', methods=['POST'])
