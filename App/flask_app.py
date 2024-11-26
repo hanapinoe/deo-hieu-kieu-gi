@@ -6,17 +6,16 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from paddleocr import PaddleOCR
 from pymongo import MongoClient
-import json
 
-# Khởi tạo Flask app
+# Initialize Flask app
 app = Flask(__name__)
 
-# Kết nối MongoDB
-client = MongoClient('mongodb://localhost:27017/')  # Thay bằng URL MongoDB của bạn
+# Connect to MongoDB
+client = MongoClient('mongodb://localhost:27017/')  # Update with your MongoDB connection string
 db = client['book_database']
 book_collection = db['books']
 
-# Load mô hình tạo embedding (ưAutoencoder hoặc ResNet)
+# Load the trained autoencoder model
 class Autoencoder(torch.nn.Module):
     def __init__(self, input_dim):
         super(Autoencoder, self).__init__()
@@ -40,16 +39,16 @@ class Autoencoder(torch.nn.Module):
         decoded = self.decoder(encoded)
         return encoded, decoded
 
-# Load mô hình đã train
-input_dim = 224 * 224 * 3  # Thay đổi phù hợp với dữ liệu
+# Load the pretrained model
+input_dim = 224 * 224 * 3
 model = Autoencoder(input_dim)
 model.load_state_dict(torch.load('autoencoder_model.pth'))
 model.eval()
 
-# Khởi tạo OCR
+# Initialize OCR
 ocr = PaddleOCR(use_angle_cls=True, lang='en')
 
-# Preprocessing ảnh
+# Preprocess image
 def preprocess_image(image_path):
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -59,59 +58,52 @@ def preprocess_image(image_path):
     image = Image.open(image_path).convert('RGB')
     return transform(image).unsqueeze(0)
 
-# OCR từ ảnh
+# Extract text from image
 def extract_text_from_image(image_path):
     result = ocr.ocr(image_path, cls=True)
     extracted_text = " ".join([line[1][0] for line in result[0]]) if result else ""
     return extracted_text
 
-# Tạo embedding từ tiêu đề hoặc ảnh
+# Create embeddings
 def create_embedding(input_data, input_type='title'):
     if input_type == 'title':
-        # Chuyển tiêu đề thành embedding (ví dụ TfidfVectorizer đã train trước)
-        vectorizer = torch.load('vectorizer.pkl')  # Load vectorizer đã train
+        vectorizer = torch.load('vectorizer.pkl')  # Load the trained vectorizer
         embedding = vectorizer.transform([input_data]).toarray()[0]
     elif input_type == 'image':
-        # Chuyển ảnh thành embedding
         image_tensor = preprocess_image(input_data)
         with torch.no_grad():
             embedding, _ = model(image_tensor.view(-1, input_dim))
         embedding = embedding.numpy()
     return embedding
 
-# API chính
 @app.route('/search', methods=['POST'])
 def search_books():
-    # Lấy dữ liệu từ request
-    data = request.json
-    image_path = data.get('image_path')
-    title = data.get('title')
+    # Get request data
+    image = request.files.get('image')
+    title = request.form.get('title')
 
-    # Xử lý dữ liệu đầu vào
-    if image_path:
+    if not image and not title:
+        return jsonify({"error": "Please provide an image or title."}), 400
+
+    # Process input
+    if image:
+        image_path = f"temp/{image.filename}"
+        image.save(image_path)
         extracted_title = extract_text_from_image(image_path)
         input_embedding = create_embedding(extracted_title, input_type='title')
     elif title:
         input_embedding = create_embedding(title, input_type='title')
-    else:
-        return jsonify({"error": "No valid input provided. Provide 'image_path' or 'title'."}), 400
 
-    # Lấy embeddings từ MongoDB
-    results = book_collection.find({})
-    book_list = []
-    for book in results:
-        book_list.append({
-            "title": book['title'],
-            "embedding": np.array(book['embedding']),
-            "metadata": book['metadata']
-        })
+    # Retrieve book embeddings from MongoDB
+    books = list(book_collection.find())
+    book_list = [{"title": book['title'], "embedding": np.array(book['embedding']), "metadata": book['metadata']} for book in books]
 
-    # Tính độ tương đồng Cosine
+    # Calculate cosine similarity
     embeddings = np.array([book['embedding'] for book in book_list])
     similarities = cosine_similarity([input_embedding], embeddings)[0]
     top_matches = sorted(zip(book_list, similarities), key=lambda x: x[1], reverse=True)[:5]
 
-    # Trả về danh sách top 5 sách tương đồng
+    # Return top 5 results
     response = [{"title": match[0]['title'], "similarity": match[1], "metadata": match[0]['metadata']} for match in top_matches]
     return jsonify(response)
 
