@@ -83,9 +83,12 @@ def create_image_embedding(image_path):
         img_embedding, _ = model(image_tensor.view(-1, img_embedding_dim))
     return img_embedding.numpy()
 
+from flask import render_template
+
 @app.route('/')
 def index():
-    return send_from_directory(os.getcwd(), 'frontend.html')
+    return render_template('frontend.html')
+
 
 # Tìm kiếm sách dựa trên ảnh hoặc tiêu đề
 @app.route('/search', methods=['POST'])
