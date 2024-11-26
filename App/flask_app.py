@@ -7,6 +7,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from pymongo import MongoClient
 import os
 import joblib
+import pytesseract  # Thêm thư viện Tesseract OCR
 
 # Khởi tạo Flask app
 app = Flask(__name__)
@@ -58,6 +59,12 @@ def preprocess_image(image_path):
     image = Image.open(image_path).convert('RGB')
     return transform(image).unsqueeze(0)
 
+# Trích xuất văn bản từ ảnh sử dụng Tesseract OCR
+def extract_text_from_image(image_path):
+    image = Image.open(image_path)
+    extracted_text = pytesseract.image_to_string(image)
+    return extracted_text.strip()
+
 # Tạo embedding cho văn bản (tiêu đề sách)
 def create_text_embedding(title):
     # Tải vectorizer đã huấn luyện từ file 'vectorizer.pkl'
@@ -91,7 +98,13 @@ def search_books():
     if image:
         image_path = f"temp/{image.filename}"
         image.save(image_path)
-        input_embedding = create_image_embedding(image_path)
+
+        # Trích xuất văn bản từ hình ảnh nếu có ảnh
+        extracted_text = extract_text_from_image(image_path)  # OCR để lấy văn bản từ ảnh
+        if extracted_text:  # Nếu có văn bản từ OCR, sử dụng văn bản đó để tạo embedding
+            input_embedding = create_text_embedding(extracted_text)
+        else:  # Nếu không có văn bản, dùng embedding của ảnh
+            input_embedding = create_image_embedding(image_path)
     elif title:
         input_embedding = create_text_embedding(title)
 
