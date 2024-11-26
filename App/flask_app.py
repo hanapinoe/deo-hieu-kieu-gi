@@ -6,6 +6,8 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from paddleocr import PaddleOCR
 from pymongo import MongoClient
+import os
+import joblib
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -42,7 +44,7 @@ class Autoencoder(torch.nn.Module):
 # Load the pretrained model
 input_dim = 224 * 224 * 3
 model = Autoencoder(input_dim)
-model.load_state_dict(torch.load('autoencoder_model.pth'))
+model.load_state_dict(torch.load('autoencoder_model.pth'))  # Ensure this file exists
 model.eval()
 
 # Initialize OCR
@@ -67,7 +69,7 @@ def extract_text_from_image(image_path):
 # Create embeddings
 def create_embedding(input_data, input_type='title'):
     if input_type == 'title':
-        vectorizer = torch.load('vectorizer.pkl')  # Load the trained vectorizer
+        vectorizer = joblib.load('vectorizer.pkl')  # Load the trained vectorizer
         embedding = vectorizer.transform([input_data]).toarray()[0]
     elif input_type == 'image':
         image_tensor = preprocess_image(input_data)
@@ -78,6 +80,10 @@ def create_embedding(input_data, input_type='title'):
 
 @app.route('/search', methods=['POST'])
 def search_books():
+    # Ensure temp folder exists
+    if not os.path.exists('temp'):
+        os.makedirs('temp')
+    
     # Get request data
     image = request.files.get('image')
     title = request.form.get('title')
@@ -96,7 +102,14 @@ def search_books():
 
     # Retrieve book embeddings from MongoDB
     books = list(book_collection.find())
-    book_list = [{"title": book['title'], "embedding": np.array(book['embedding']), "metadata": book['metadata']} for book in books]
+    book_list = []
+    for book in books:
+        if 'embedding' in book and 'title' in book:
+            book_list.append({
+                "title": book['title'],
+                "embedding": np.array(book['embedding']),
+                "metadata": book.get('metadata', 'N/A')
+            })
 
     # Calculate cosine similarity
     embeddings = np.array([book['embedding'] for book in book_list])
