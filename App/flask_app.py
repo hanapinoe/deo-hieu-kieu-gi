@@ -44,7 +44,7 @@ class SiameseNetwork(torch.nn.Module):
 
 # Tải mô hình đã huấn luyện
 img_embedding_dim = 2048  # Kích thước embedding ảnh từ ResNet-50
-text_embedding_dim = 100  # Kích thước embedding văn bản từ vectorizer
+text_embedding_dim = 101  # Kích thước embedding văn bản từ vectorizer
 model = SiameseNetwork(img_embedding_dim, text_embedding_dim, output_dim=128)
 model.load_state_dict(torch.load('siamese_model.pth'))  # Tải mô hình Siamese đã huấn luyện
 model.eval()
