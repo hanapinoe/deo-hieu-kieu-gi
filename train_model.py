@@ -37,10 +37,18 @@ test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
 # Mô hình Siamese Network
 class SiameseNetwork(nn.Module):
-    def __init__(self, embedding_dim):
+    def __init__(self, img_embedding_dim, text_embedding_dim, output_dim=128):
         super(SiameseNetwork, self).__init__()
+        
+        # Chuyển đổi embedding ảnh về cùng số chiều
+        self.img_transform = nn.Linear(img_embedding_dim, output_dim)
+        
+        # Chuyển đổi embedding văn bản về cùng số chiều
+        self.text_transform = nn.Linear(text_embedding_dim, output_dim)
+        
+        # Mạng shared_net
         self.shared_net = nn.Sequential(
-            nn.Linear(embedding_dim, 128),
+            nn.Linear(output_dim, 128),
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
@@ -51,10 +59,15 @@ class SiameseNetwork(nn.Module):
     def forward_once(self, x):
         return self.shared_net(x)
 
-    def forward(self, input1, input2):
-        output1 = self.forward_once(input1)
-        output2 = self.forward_once(input2)
+    def forward(self, img_input, text_input):
+        img_embedding = self.img_transform(img_input)
+        text_embedding = self.text_transform(text_input)
+        
+        output1 = self.forward_once(img_embedding)
+        output2 = self.forward_once(text_embedding)
+        
         return output1, output2
+
 
 # Loss function: Contrastive Loss
 class ContrastiveLoss(nn.Module):
@@ -69,8 +82,10 @@ class ContrastiveLoss(nn.Module):
         return loss.mean()
 
 # Khởi tạo mô hình, loss, và optimizer
-embedding_dim = train_pairs[0][0].shape[0]  # Lấy số chiều từ embedding ảnh
-model = SiameseNetwork(embedding_dim)
+img_embedding_dim = 2048  # Embedding ảnh từ ResNet-50
+text_embedding_dim = train_pairs[0][1].shape[0]  # Số chiều embedding văn bản
+model = SiameseNetwork(img_embedding_dim, text_embedding_dim, output_dim=128)
+
 criterion = ContrastiveLoss(margin=1.0)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
