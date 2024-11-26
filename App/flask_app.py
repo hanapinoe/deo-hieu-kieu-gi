@@ -4,10 +4,8 @@ import torchvision.transforms as transforms
 from PIL import Image
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from paddleocr import PaddleOCR
 from pymongo import MongoClient
 import os
-import joblib
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -17,40 +15,39 @@ client = MongoClient('mongodb://localhost:27017/')  # Update with your MongoDB c
 db = client['book_database']
 book_collection = db['books']
 
-# Load the trained autoencoder model
-class Autoencoder(torch.nn.Module):
-    def __init__(self, input_dim):
-        super(Autoencoder, self).__init__()
-        self.encoder = torch.nn.Sequential(
-            torch.nn.Linear(input_dim, 128),
+# Load the trained Siamese model
+class SiameseNetwork(torch.nn.Module):
+    def __init__(self, img_embedding_dim, text_embedding_dim, output_dim=128):
+        super(SiameseNetwork, self).__init__()
+        self.img_transform = torch.nn.Linear(img_embedding_dim, output_dim)
+        self.text_transform = torch.nn.Linear(text_embedding_dim, output_dim)
+        self.shared_net = torch.nn.Sequential(
+            torch.nn.Linear(output_dim, 128),
             torch.nn.ReLU(),
             torch.nn.Linear(128, 64),
             torch.nn.ReLU(),
-            torch.nn.Linear(64, 32)
+            torch.nn.Linear(64, 32),
+            torch.nn.ReLU()
         )
-        self.decoder = torch.nn.Sequential(
-            torch.nn.Linear(32, 64),
-            torch.nn.ReLU(),
-            torch.nn.Linear(64, 128),
-            torch.nn.ReLU(),
-            torch.nn.Linear(128, input_dim)
-        )
-    
-    def forward(self, x):
-        encoded = self.encoder(x)
-        decoded = self.decoder(encoded)
-        return encoded, decoded
 
-# Load the pretrained model
-input_dim = 224 * 224 * 3
-model = Autoencoder(input_dim)
-model.load_state_dict(torch.load('autoencoder_model.pth'))  # Ensure this file exists
+    def forward_once(self, x):
+        return self.shared_net(x)
+
+    def forward(self, img_input, text_input):
+        img_embedding = self.img_transform(img_input)
+        text_embedding = self.text_transform(text_input)
+        output1 = self.forward_once(img_embedding)
+        output2 = self.forward_once(text_embedding)
+        return output1, output2
+
+# Load pre-trained model
+img_embedding_dim = 2048  # Assuming image embedding size from ResNet-50
+text_embedding_dim = 100  # Adjust this to the text embedding size from your vectorizer
+model = SiameseNetwork(img_embedding_dim, text_embedding_dim, output_dim=128)
+model.load_state_dict(torch.load('siamese_model.pth'))  # Load your trained Siamese model
 model.eval()
 
-# Initialize OCR
-ocr = PaddleOCR(use_angle_cls=True, lang='en')
-
-# Preprocess image
+# Preprocess image for ResNet-50 model
 def preprocess_image(image_path):
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -60,30 +57,27 @@ def preprocess_image(image_path):
     image = Image.open(image_path).convert('RGB')
     return transform(image).unsqueeze(0)
 
-# Extract text from image
-def extract_text_from_image(image_path):
-    result = ocr.ocr(image_path, cls=True)
-    extracted_text = " ".join([line[1][0] for line in result[0]]) if result else ""
-    return extracted_text
+# Create embeddings for the text
+def create_text_embedding(title):
+    # Load your trained text vectorizer (e.g., TfidfVectorizer or any other)
+    vectorizer = joblib.load('vectorizer.pkl')  # Replace with the path to your vectorizer
+    text_embedding = vectorizer.transform([title]).toarray()[0]
+    return text_embedding
 
-# Create embeddings
-def create_embedding(input_data, input_type='title'):
-    if input_type == 'title':
-        vectorizer = joblib.load('vectorizer.pkl')  # Load the trained vectorizer
-        embedding = vectorizer.transform([input_data]).toarray()[0]
-    elif input_type == 'image':
-        image_tensor = preprocess_image(input_data)
-        with torch.no_grad():
-            embedding, _ = model(image_tensor.view(-1, input_dim))
-        embedding = embedding.numpy()
-    return embedding
+# Create embeddings for image
+def create_image_embedding(image_path):
+    image_tensor = preprocess_image(image_path)
+    with torch.no_grad():
+        img_embedding, _ = model(image_tensor.view(-1, img_embedding_dim))
+    return img_embedding.numpy()
 
+# Search books based on image or title
 @app.route('/search', methods=['POST'])
 def search_books():
     # Ensure temp folder exists
     if not os.path.exists('temp'):
         os.makedirs('temp')
-    
+
     # Get request data
     image = request.files.get('image')
     title = request.form.get('title')
@@ -91,14 +85,14 @@ def search_books():
     if not image and not title:
         return jsonify({"error": "Please provide an image or title."}), 400
 
-    # Process input
+    # Process input data
+    input_embedding = None
     if image:
         image_path = f"temp/{image.filename}"
         image.save(image_path)
-        extracted_title = extract_text_from_image(image_path)
-        input_embedding = create_embedding(extracted_title, input_type='title')
+        input_embedding = create_image_embedding(image_path)
     elif title:
-        input_embedding = create_embedding(title, input_type='title')
+        input_embedding = create_text_embedding(title)
 
     # Retrieve book embeddings from MongoDB
     books = list(book_collection.find())
