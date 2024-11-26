@@ -6,16 +6,17 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from pymongo import MongoClient
 import os
+import joblib
 
-# Initialize Flask app
+# Khởi tạo Flask app
 app = Flask(__name__)
 
-# Connect to MongoDB
-client = MongoClient('mongodb://localhost:27017/')  # Update with your MongoDB connection string
+# Kết nối với MongoDB
+client = MongoClient('mongodb://localhost:27017/')  # Cập nhật với chuỗi kết nối MongoDB của bạn
 db = client['book_database']
 book_collection = db['books']
 
-# Load the trained Siamese model
+# Tải mô hình Siamese đã huấn luyện
 class SiameseNetwork(torch.nn.Module):
     def __init__(self, img_embedding_dim, text_embedding_dim, output_dim=128):
         super(SiameseNetwork, self).__init__()
@@ -40,14 +41,14 @@ class SiameseNetwork(torch.nn.Module):
         output2 = self.forward_once(text_embedding)
         return output1, output2
 
-# Load pre-trained model
-img_embedding_dim = 2048  # Assuming image embedding size from ResNet-50
-text_embedding_dim = 100  # Adjust this to the text embedding size from your vectorizer
+# Tải mô hình đã huấn luyện
+img_embedding_dim = 2048  # Kích thước embedding ảnh từ ResNet-50
+text_embedding_dim = 100  # Kích thước embedding văn bản từ vectorizer
 model = SiameseNetwork(img_embedding_dim, text_embedding_dim, output_dim=128)
-model.load_state_dict(torch.load('siamese_model.pth'))  # Load your trained Siamese model
+model.load_state_dict(torch.load('siamese_model.pth'))  # Tải mô hình Siamese đã huấn luyện
 model.eval()
 
-# Preprocess image for ResNet-50 model
+# Tiền xử lý ảnh cho mô hình ResNet-50
 def preprocess_image(image_path):
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -57,35 +58,35 @@ def preprocess_image(image_path):
     image = Image.open(image_path).convert('RGB')
     return transform(image).unsqueeze(0)
 
-# Create embeddings for the text
+# Tạo embedding cho văn bản (tiêu đề sách)
 def create_text_embedding(title):
-    # Load your trained text vectorizer (e.g., TfidfVectorizer or any other)
-    vectorizer = joblib.load('vectorizer.pkl')  # Replace with the path to your vectorizer
+    # Tải vectorizer đã huấn luyện từ file 'vectorizer.pkl'
+    vectorizer = joblib.load('vectorizer.pkl')  # Tải vectorizer đã lưu
     text_embedding = vectorizer.transform([title]).toarray()[0]
     return text_embedding
 
-# Create embeddings for image
+# Tạo embedding cho ảnh
 def create_image_embedding(image_path):
     image_tensor = preprocess_image(image_path)
     with torch.no_grad():
         img_embedding, _ = model(image_tensor.view(-1, img_embedding_dim))
     return img_embedding.numpy()
 
-# Search books based on image or title
+# Tìm kiếm sách dựa trên ảnh hoặc tiêu đề
 @app.route('/search', methods=['POST'])
 def search_books():
-    # Ensure temp folder exists
+    # Đảm bảo thư mục temp tồn tại
     if not os.path.exists('temp'):
         os.makedirs('temp')
 
-    # Get request data
+    # Lấy dữ liệu từ yêu cầu
     image = request.files.get('image')
     title = request.form.get('title')
 
     if not image and not title:
-        return jsonify({"error": "Please provide an image or title."}), 400
+        return jsonify({"error": "Vui lòng cung cấp ảnh hoặc tiêu đề."}), 400
 
-    # Process input data
+    # Xử lý dữ liệu đầu vào
     input_embedding = None
     if image:
         image_path = f"temp/{image.filename}"
@@ -94,7 +95,7 @@ def search_books():
     elif title:
         input_embedding = create_text_embedding(title)
 
-    # Retrieve book embeddings from MongoDB
+    # Lấy danh sách sách từ MongoDB
     books = list(book_collection.find())
     book_list = []
     for book in books:
@@ -105,12 +106,12 @@ def search_books():
                 "metadata": book.get('metadata', 'N/A')
             })
 
-    # Calculate cosine similarity
+    # Tính toán độ tương đồng cosine
     embeddings = np.array([book['embedding'] for book in book_list])
     similarities = cosine_similarity([input_embedding], embeddings)[0]
     top_matches = sorted(zip(book_list, similarities), key=lambda x: x[1], reverse=True)[:5]
 
-    # Return top 5 results
+    # Trả về 5 kết quả có độ tương đồng cao nhất
     response = [{"title": match[0]['title'], "similarity": match[1], "metadata": match[0]['metadata']} for match in top_matches]
     return jsonify(response)
 
