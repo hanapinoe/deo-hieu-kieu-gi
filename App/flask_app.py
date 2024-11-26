@@ -8,9 +8,13 @@ from pymongo import MongoClient
 import os
 import joblib
 import pytesseract  # Thêm thư viện Tesseract OCR
+from flask_cors import CORS
 
 # Khởi tạo Flask app
 app = Flask(__name__)
+
+# Cho phép CORS cho tất cả các domain
+CORS(app)
 
 # Kết nối với MongoDB
 client = MongoClient('mongodb://localhost:27017/')  # Cập nhật với chuỗi kết nối MongoDB của bạn
