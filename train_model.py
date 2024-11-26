@@ -30,11 +30,11 @@ test_dataset = ContrastiveDataset(test_pairs, test_labels)
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
-# Mô hình contrastive learning
-class ContrastiveModel(nn.Module):
+# Mô hình Siamese Network
+class SiameseNetwork(nn.Module):
     def __init__(self, embedding_dim):
-        super(ContrastiveModel, self).__init__()
-        self.fc = nn.Sequential(
+        super(SiameseNetwork, self).__init__()
+        self.shared_net = nn.Sequential(
             nn.Linear(embedding_dim, 128),
             nn.ReLU(),
             nn.Linear(128, 64),
@@ -43,8 +43,13 @@ class ContrastiveModel(nn.Module):
             nn.ReLU()
         )
 
-    def forward(self, x):
-        return self.fc(x)
+    def forward_once(self, x):
+        return self.shared_net(x)
+
+    def forward(self, input1, input2):
+        output1 = self.forward_once(input1)
+        output2 = self.forward_once(input2)
+        return output1, output2
 
 # Loss function: Contrastive Loss
 class ContrastiveLoss(nn.Module):
@@ -60,7 +65,7 @@ class ContrastiveLoss(nn.Module):
 
 # Khởi tạo model, optimizer, và loss
 embedding_dim = train_pairs.shape[2]
-model = ContrastiveModel(embedding_dim)
+model = SiameseNetwork(embedding_dim)
 criterion = ContrastiveLoss(margin=1.0)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -71,8 +76,7 @@ for epoch in range(num_epochs):
     running_loss = 0.0
     for img_emb, text_emb, label in train_loader:
         optimizer.zero_grad()
-        output1 = model(img_emb)
-        output2 = model(text_emb)
+        output1, output2 = model(img_emb, text_emb)
         loss = criterion(output1, output2, label)
         loss.backward()
         optimizer.step()
@@ -85,8 +89,7 @@ y_true = []
 y_pred = []
 with torch.no_grad():
     for img_emb, text_emb, label in test_loader:
-        output1 = model(img_emb)
-        output2 = model(text_emb)
+        output1, output2 = model(img_emb, text_emb)
         euclidean_distance = nn.functional.pairwise_distance(output1, output2)
         predictions = (euclidean_distance < 0.5).float()
         y_true.extend(label.numpy())

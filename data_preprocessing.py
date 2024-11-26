@@ -2,16 +2,12 @@ import os
 import pandas as pd
 from PIL import Image
 import torch
-import torchvision.models as models
 import torchvision.transforms as transforms
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from torchvision.models import resnet50, ResNet50_Weights
-
-# Tạo các cặp dữ liệu (positive/negative pairs)
-from itertools import product
 import random
 
 # Đọc dữ liệu từ file CSV
@@ -52,10 +48,8 @@ def create_text_embeddings(data):
     return np.hstack((title_embeddings, df[['price_scaled']].values))
 
 # Hàm tạo embedding ảnh
-
 def create_image_embeddings(data):
-    # Sử dụng trọng số đúng
-    model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)  # Hoặc ResNet50_Weights.DEFAULT
+    model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
     model = torch.nn.Sequential(*list(model.children())[:-1])  # Lấy layer trước classifier
     model.eval()
     
@@ -72,34 +66,30 @@ def create_image_embeddings(data):
             with torch.no_grad():
                 features = model(image)
             return features.squeeze().numpy()
-        except:
-            print(idx)
-            
+        except Exception as e:
+            print(f"Error processing image at index {idx}: {e}")
+            return np.zeros(2048)  # Kích thước vector ResNet50
 
-    return np.array([
-        get_image_embedding(idx, d['image'])
-        for idx, d in enumerate(data)
-    ])
-
+    return [get_image_embedding(idx, d['image']) for idx, d in enumerate(data)]
 
 # Tạo embedding văn bản và ảnh
 text_embeddings = create_text_embeddings(dataset)
 image_embeddings = create_image_embeddings(dataset)
 
-# Normalize từng embedding
+# Chuẩn hóa embedding
 text_embeddings = StandardScaler().fit_transform(text_embeddings)
 image_embeddings = StandardScaler().fit_transform(image_embeddings)
 
 # Ghép thông tin embedding
+valid_dataset = []
 for idx, d in enumerate(dataset):
-    d['text_embedding'] = text_embeddings[idx]
-    d['image_embedding'] = image_embeddings[idx]
+    if idx < len(text_embeddings) and idx < len(image_embeddings):
+        valid_dataset.append({
+            'text_embedding': text_embeddings[idx],
+            'image_embedding': image_embeddings[idx]
+        })
 
 # Tạo các cặp dữ liệu (positive/negative pairs)
-from itertools import product
-import random
-
-# Tạo các cặp dữ liệu (positive/negative pairs) hiệu quả
 def create_pairs(data, num_negative_samples=1):
     pairs = []
     labels = []
@@ -111,23 +101,25 @@ def create_pairs(data, num_negative_samples=1):
 
     # Tạo negative pairs
     data_len = len(data)
-    for _ in range(num_negative_samples * data_len):  # Số lượng mẫu âm
-        img_idx = random.randint(0, data_len - 1)  # Chọn ngẫu nhiên ảnh
-        text_idx = random.randint(0, data_len - 1)  # Chọn ngẫu nhiên văn bản
-        if img_idx != text_idx:  # Đảm bảo không chọn cặp giống nhau
-            pairs.append((data[img_idx]['image_embedding'], data[text_idx]['text_embedding']))
-            labels.append(0)
+    for _ in range(num_negative_samples * data_len):
+        while True:
+            img_idx = random.randint(0, data_len - 1)
+            text_idx = random.randint(0, data_len - 1)
+            if img_idx != text_idx:  # Đảm bảo không chọn cặp giống nhau
+                break
+        pairs.append((data[img_idx]['image_embedding'], data[text_idx]['text_embedding']))
+        labels.append(0)
 
-    return np.array(pairs), np.array(labels)
-    #vấn đề ở chỗ nó duyệt toàn bộ dữ liệu hai lần để tạo tất cả các cặp. Với một dataset lớn, điều này sẽ tốn rất nhiều thời gian và bộ nhớ, dẫn đến lỗi khi chạy.
-    #ValueError: setting an array element with a sequence. 
-    # The requested array has an inhomogeneous shape after 2 dimensions. The detected shape was (4709, 2) + inhomogeneous part.
+    return pairs, labels
 
+pairs, labels = create_pairs(valid_dataset)
 
-pairs, labels = create_pairs(dataset)
+# Chuyển đổi pairs thành numpy object array
+pairs_array = np.array([(np.array(p[0]), np.array(p[1])) for p in pairs], dtype=object)
+labels_array = np.array(labels)
 
 # Chia dữ liệu train/test
-train_pairs, test_pairs, train_labels, test_labels = train_test_split(pairs, labels, test_size=0.2, random_state=42)
+train_pairs, test_pairs, train_labels, test_labels = train_test_split(pairs_array, labels_array, test_size=0.2, random_state=42)
 
 # Lưu dữ liệu train/test để sử dụng
 np.save('train_pairs.npy', train_pairs)
