@@ -20,7 +20,7 @@ for _, row in data.iterrows():
     title = row['Book Title']       # Cột chứa tiêu đề sách
     price = row['Price']            # Cột chứa giá sách
 
-    # Xóa phần 'images/' nếu có trong image_path và thêm vào đường dẫn tĩnh
+    # Xử lý đường dẫn ảnh
     if image_path.startswith('images/'):
         image_path = image_path[len('images/'):]
     full_image_path = os.path.join('./static/images', image_path)
@@ -28,20 +28,26 @@ for _, row in data.iterrows():
     # Kiểm tra sự tồn tại của file ảnh
     if os.path.exists(full_image_path):
         try:
-            # Mở ảnh bằng Pillow
-            image = Image.open(full_image_path).convert('RGB')  # Chuyển đổi thành ảnh RGB
-            # Thêm thông tin vào dataset
+            # Mở ảnh và chuyển đổi thành RGB
+            image = Image.open(full_image_path).convert('RGB')
             dataset.append({'image': image, 'title': title, 'price': price})
-        except IOError:
-            continue  # Bỏ qua ảnh lỗi
+        except IOError as e:
+            print(f"Error opening image {full_image_path}: {e}")
 
 # Hàm tạo embedding văn bản
 def create_text_embeddings(data):
     df = pd.DataFrame(data)
-    df['price'] = df['price'].str.replace(r'[₫.]', '', regex=True).astype(float)
+    try:
+        df['price'] = df['price'].str.replace(r'[₫.,]', '', regex=True).astype(float)
+    except Exception as e:
+        print(f"Error processing price column: {e}")
+        df['price'] = 0.0  # Giá trị mặc định nếu không xử lý được
+
+    # Chuẩn hóa giá
     scaler = StandardScaler()
     df['price_scaled'] = scaler.fit_transform(df[['price']])
 
+    # Tạo embedding tiêu đề bằng TF-IDF
     vectorizer = TfidfVectorizer(max_features=100)
     title_embeddings = vectorizer.fit_transform(df['title']).toarray()
 
@@ -52,7 +58,7 @@ def create_image_embeddings(data):
     model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
     model = torch.nn.Sequential(*list(model.children())[:-1])  # Lấy layer trước classifier
     model.eval()
-    
+
     preprocess = transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(224),
@@ -62,13 +68,13 @@ def create_image_embeddings(data):
 
     def get_image_embedding(idx, image):
         try:
-            image = preprocess(image).unsqueeze(0)
+            image_tensor = preprocess(image).unsqueeze(0)
             with torch.no_grad():
-                features = model(image)
+                features = model(image_tensor)
             return features.squeeze().numpy()
         except Exception as e:
             print(f"Error processing image at index {idx}: {e}")
-            return np.zeros(2048)  # Kích thước vector ResNet50
+            return np.zeros(2048)
 
     return [get_image_embedding(idx, d['image']) for idx, d in enumerate(data)]
 
@@ -76,9 +82,10 @@ def create_image_embeddings(data):
 text_embeddings = create_text_embeddings(dataset)
 image_embeddings = create_image_embeddings(dataset)
 
-# Chuẩn hóa embedding
-text_embeddings = StandardScaler().fit_transform(text_embeddings)
-image_embeddings = StandardScaler().fit_transform(image_embeddings)
+# Chuẩn hóa embedding một lần
+scaler = StandardScaler()
+text_embeddings = scaler.fit_transform(text_embeddings)
+image_embeddings = scaler.fit_transform(image_embeddings)
 
 # Ghép thông tin embedding
 valid_dataset = []
@@ -112,16 +119,17 @@ def create_pairs(data, num_negative_samples=1):
 
     return pairs, labels
 
+# Tạo pairs và labels
 pairs, labels = create_pairs(valid_dataset)
 
-# Chuyển đổi pairs thành numpy object array
+# Chuyển pairs thành numpy array
 pairs_array = np.array([(np.array(p[0]), np.array(p[1])) for p in pairs], dtype=object)
 labels_array = np.array(labels)
 
 # Chia dữ liệu train/test
 train_pairs, test_pairs, train_labels, test_labels = train_test_split(pairs_array, labels_array, test_size=0.2, random_state=42)
 
-# Lưu dữ liệu train/test để sử dụng
+# Lưu dữ liệu train/test
 np.save('train_pairs.npy', train_pairs)
 np.save('train_labels.npy', train_labels)
 np.save('test_pairs.npy', test_pairs)
