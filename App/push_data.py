@@ -43,7 +43,7 @@ csv_file = "books_data.csv"
 books_df = pd.read_csv(csv_file)
 
 # Đường dẫn thư mục chứa ảnh
-image_dir = os.path.join(os.getcwd(), 'static')
+image_dir = os.path.join(os.getcwd(), 'static', 'images')
 
 # Duyệt qua từng dòng trong DataFrame
 for _, row in books_df.iterrows():
@@ -51,6 +51,8 @@ for _, row in books_df.iterrows():
     price = row['Price']
     image_filename = row['Image Path']  # Tên file ảnh từ CSV
 
+    # Loại bỏ "/images" khỏi tên file ảnh
+    image_filename = image_filename.replace('/images', '')
     # Đảm bảo rằng đường dẫn đúng đến thư mục static/images
     image_path = os.path.join(image_dir, image_filename)
 
