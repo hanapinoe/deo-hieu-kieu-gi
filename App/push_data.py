@@ -1,91 +1,115 @@
+import os
 import pandas as pd
-import pymongo
+from PIL import Image
 import torch
 import torchvision.transforms as transforms
-from PIL import Image
-import joblib
-import base64
-import os
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.model_selection import train_test_split
+from torchvision.models import resnet50, ResNet50_Weights
+import random
+from pymongo import MongoClient
 
-# Kết nối MongoDB
-client = pymongo.MongoClient("mongodb://localhost:27017/")
-db = client["book_database"]
-collection = db["books"]
+# Đọc dữ liệu từ file CSV
+data = pd.read_csv('books_data.csv')
+dataset = []
 
-# Tải mô hình ResNet và vectorizer
-resnet_model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet50', pretrained=True)
-resnet_model.eval()
-vectorizer = joblib.load('vectorizer.pkl')
+# Duyệt qua từng hàng trong DataFrame
+for _, row in data.iterrows():
+    image_path = row['Image Path']  # Cột chứa đường dẫn ảnh
+    title = row['Book Title']       # Cột chứa tiêu đề sách
+    price = row['Price']            # Cột chứa giá sách
 
-# Tiền xử lý ảnh cho mô hình ResNet-50
-def preprocess_image(image_path):
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
+    # Xử lý đường dẫn ảnh
+    if image_path.startswith('images/'):
+        image_path = image_path[len('images/'):]
+    full_image_path = os.path.join('./static/images', image_path)
+    
+    # Kiểm tra sự tồn tại của file ảnh
+    if os.path.exists(full_image_path):
+        try:
+            # Mở ảnh và chuyển đổi thành RGB
+            image = Image.open(full_image_path).convert('RGB')
+            dataset.append({'image': image, 'title': title, 'price': price})
+        except IOError as e:
+            print(f"Error opening image {full_image_path}: {e}")
+
+# Hàm tạo embedding văn bản
+def create_text_embeddings(data):
+    df = pd.DataFrame(data)
+    try:
+        df['price'] = df['price'].str.replace(r'[₫.,]', '', regex=True).astype(float)
+    except Exception as e:
+        print(f"Error processing price column: {e}")
+        df['price'] = 0.0  # Giá trị mặc định nếu không xử lý được
+
+    # Chuẩn hóa giá
+    scaler = StandardScaler()
+    df['price_scaled'] = scaler.fit_transform(df[['price']])
+
+    # Tạo embedding tiêu đề bằng TF-IDF
+    vectorizer = TfidfVectorizer(max_features=100)
+    title_embeddings = vectorizer.fit_transform(df['title']).toarray()
+
+    return np.hstack((title_embeddings, df[['price_scaled']].values))
+
+# Hàm tạo embedding ảnh
+def create_image_embeddings(data):
+    model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+    model = torch.nn.Sequential(*list(model.children())[:-1])  # Lấy layer trước classifier
+    model.eval()
+
+    preprocess = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
-    image = Image.open(image_path).convert('RGB')
-    return transform(image).unsqueeze(0)
 
-# Tạo embedding cho ảnh
-def create_image_embedding(image_path):
-    image_tensor = preprocess_image(image_path)
-    with torch.no_grad():
-        img_embedding = resnet_model(image_tensor).squeeze(0).numpy()
-    return img_embedding.tolist()
+    def get_image_embedding(idx, image):
+        try:
+            image_tensor = preprocess(image).unsqueeze(0)
+            with torch.no_grad():
+                features = model(image_tensor)
+            return features.squeeze().numpy()
+        except Exception as e:
+            print(f"Error processing image at index {idx}: {e}")
+            return np.zeros(2048)
 
-# Tạo embedding cho văn bản
-def create_text_embedding(title):
-    return vectorizer.transform([title]).toarray()[0].tolist()
+    return [get_image_embedding(idx, d['image']) for idx, d in enumerate(data)]
 
-# Đọc dữ liệu từ CSV và lưu vào MongoDB
-csv_file = "books_data.csv"
-books_df = pd.read_csv(csv_file)
+# Tạo embedding văn bản và ảnh
+text_embeddings = create_text_embeddings(dataset)
+image_embeddings = create_image_embeddings(dataset)
 
-# Đường dẫn thư mục chứa ảnh
-image_dir = os.path.join(os.getcwd(), 'static', 'images')
+# Chuẩn hóa embedding một lần
+scaler = StandardScaler()
+text_embeddings = scaler.fit_transform(text_embeddings)
+image_embeddings = scaler.fit_transform(image_embeddings)
 
-# Duyệt qua từng dòng trong DataFrame
-for _, row in books_df.iterrows():
-    title = row['Book Title']
-    price = row['Price']
-    image_filename = row['Image Path']  # Tên file ảnh từ CSV
+# Ghép thông tin embedding
+valid_dataset = []
+for idx, d in enumerate(dataset):
+    if idx < len(text_embeddings) and idx < len(image_embeddings):
+        valid_dataset.append({
+            'title': d['title'],
+            'price': d['price'],
+            'text_embedding': text_embeddings[idx].tolist(),  # Convert to list for MongoDB
+            'image_embedding': image_embeddings[idx].tolist()  # Convert to list for MongoDB
+        })
 
-    # Kiểm tra nếu trường 'Image Path' là 'No Image' hoặc trống
-    if image_filename.lower() == 'no image' or not image_filename:
-        print(f"Lỗi: Không có hình ảnh cho {title}")
-        continue  # Bỏ qua dòng này nếu không có ảnh
+# Hàm đẩy dữ liệu lên MongoDB
+def push_data_to_mongodb(data, db_name='book_db', collection_name='book_embeddings'):
+    client = MongoClient('mongodb://localhost:27017/')  # Thay thế bằng URL của MongoDB nếu cần
+    db = client[db_name]
+    collection = db[collection_name]
+    
+    # Chèn dữ liệu
+    collection.insert_many(data)
+    print(f"Successfully inserted {len(data)} records into the {collection_name} collection in the {db_name} database.")
 
-    # Nếu đường dẫn ảnh có dạng tuyệt đối, chỉ lấy tên file từ đường dẫn
-    image_filename = os.path.basename(image_filename)
+# Đẩy dữ liệu lên MongoDB
+push_data_to_mongodb(valid_dataset)
 
-    # Đảm bảo rằng đường dẫn đúng đến thư mục static/images
-    image_path = os.path.join(image_dir, image_filename)
-
-    # Kiểm tra nếu tệp hình ảnh tồn tại
-    if not os.path.exists(image_path):
-        print(f"Lỗi: Không tìm thấy hình ảnh {image_path}")
-        continue
-
-    # Tạo embedding cho văn bản và hình ảnh
-    text_embedding = create_text_embedding(title)
-    image_embedding = create_image_embedding(image_path)
-
-    # Đọc và chuyển ảnh thành Base64
-    with open(image_path, "rb") as img_file:
-        image_base64 = base64.b64encode(img_file.read()).decode("utf-8")
-
-    # Tạo document để lưu vào MongoDB
-    document = {
-        "title": title,
-        "price": price,
-        "image_embedding": image_embedding,
-        "text_embedding": text_embedding,
-        "image_base64": image_base64,
-        "image_url": image_filename  # Lưu tên file hình ảnh, không cần đường dẫn tuyệt đối
-    }
-
-    # Lưu document vào MongoDB
-    collection.insert_one(document)
-
-print("Dữ liệu đã được lưu vào MongoDB.")
+print("Data for contrastive learning has been prepared and pushed to MongoDB successfully.")
