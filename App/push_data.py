@@ -40,15 +40,25 @@ for _, row in metadata.iterrows():
         text_embedding = embedding_row['text_embedding']
         image_embedding = embedding_row['image_embedding']
         
-        # Kiểm tra nếu text_embedding có kích thước 101
-        if len(text_embedding) != 101:  # Mô hình của bạn yêu cầu text_embedding kích thước 101
+        # Kiểm tra kích thước text_embedding
+        if len(text_embedding) != 101:  # Mô hình yêu cầu text_embedding kích thước 101
             print(f"Skipping title '{row['title']}' due to incorrect text_embedding size: {len(text_embedding)}")
-            continue
+            # Cố gắng padding hoặc cắt bỏ nếu text_embedding có kích thước không đúng
+            if len(text_embedding) < 101:
+                text_embedding = text_embedding + [0] * (101 - len(text_embedding))  # Padding bằng 0
+            elif len(text_embedding) > 101:
+                text_embedding = text_embedding[:101]  # Cắt bớt nếu quá dài
+            else:
+                continue
         
-        # Kiểm tra nếu image_embedding có kích thước 2048
+        # Kiểm tra kích thước image_embedding
         if len(image_embedding) != 2048:  # ResNet50 yêu cầu image_embedding kích thước 2048
             print(f"Skipping title '{row['title']}' due to incorrect image_embedding size: {len(image_embedding)}")
-            continue
+            # Nếu cần, có thể làm tương tự như với text_embedding: padding hoặc cắt
+            if len(image_embedding) < 2048:
+                image_embedding = image_embedding + [0] * (2048 - len(image_embedding))  # Padding
+            elif len(image_embedding) > 2048:
+                image_embedding = image_embedding[:2048]  # Cắt bớt
 
         # Tạo document hợp lệ để chèn vào MongoDB
         document = {
@@ -66,4 +76,3 @@ if valid_data_to_insert:
     print(f"Successfully inserted {len(valid_data_to_insert)} records into the books collection in the bookstore database.")
 else:
     print("No valid records to insert. Please check the data.")
-
