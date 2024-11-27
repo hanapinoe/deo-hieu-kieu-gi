@@ -110,77 +110,82 @@ def index():
 
 @app.route('/search', methods=['POST'])
 def search_books():
-    # Tạo thư mục tạm nếu chưa tồn tại
-    if not os.path.exists('temp'):
-        os.makedirs('temp')
+    try:
+        # Tạo thư mục tạm nếu chưa tồn tại
+        if not os.path.exists('temp'):
+            os.makedirs('temp')
 
-    image = request.files.get('image')
-    title = request.form.get('title')
+        image = request.files.get('image')
+        title = request.form.get('title')
 
-    # Kiểm tra nếu không có tiêu đề và không có ảnh
-    if not image and not title:
-        return jsonify({"error": "Vui lòng cung cấp ít nhất một tiêu đề hoặc hình ảnh."}), 400
+        # Kiểm tra nếu không có tiêu đề và không có ảnh
+        if not image and not title:
+            return jsonify({"error": "Vui lòng cung cấp ít nhất một tiêu đề hoặc hình ảnh."}), 400
 
-    input_embedding = None
+        input_embedding = None
 
-    # Xử lý hình ảnh nếu có
-    if image:
-        image_path = f"temp/{image.filename}"
-        image.save(image_path)
+        # Xử lý hình ảnh nếu có
+        if image:
+            image_path = f"temp/{image.filename}"
+            image.save(image_path)
 
-        try:
-            extracted_text = extract_text_from_image(image_path)
-            if extracted_text.strip():
-                input_embedding = create_text_embedding(extracted_text)
-            else:
-                input_embedding = create_image_embedding(image_path)
-        except Exception as e:
-            return jsonify({"error": f"Lỗi xử lý ảnh: {str(e)}"}), 500
+            try:
+                extracted_text = extract_text_from_image(image_path)
+                if extracted_text.strip():
+                    input_embedding = create_text_embedding(extracted_text)
+                else:
+                    input_embedding = create_image_embedding(image_path)
+            except Exception as e:
+                return jsonify({"error": f"Lỗi xử lý ảnh: {str(e)}"}), 500
 
-    # Xử lý tiêu đề nếu có
-    elif title:
-        try:
-            input_embedding = create_text_embedding(title)
-        except Exception as e:
-            return jsonify({"error": f"Lỗi xử lý tiêu đề: {str(e)}"}), 500
+        # Xử lý tiêu đề nếu có
+        elif title:
+            try:
+                input_embedding = create_text_embedding(title)
+            except Exception as e:
+                return jsonify({"error": f"Lỗi xử lý tiêu đề: {str(e)}"}), 500
 
-    # Kiểm tra embedding đầu vào
-    if input_embedding is None or input_embedding.shape[1] not in [101, 2048]:
-        return jsonify({"error": "Embedding không hợp lệ."}), 400
+        # Kiểm tra embedding đầu vào
+        if input_embedding is None or input_embedding.shape[1] not in [101, 2048]:
+            return jsonify({"error": "Embedding không hợp lệ."}), 400
 
-    # Lấy tất cả sách từ MongoDB
-    books = list(book_collection.find())
-    results = []
+        # Lấy tất cả sách từ MongoDB
+        books = list(book_collection.find())
+        results = []
 
-    for book in books:
-        # Lấy embedding từ MongoDB
-        stored_embedding = book.get('image_embedding' if image else 'text_embedding')
-        if not stored_embedding:
-            continue
+        for book in books:
+            # Lấy embedding từ MongoDB
+            stored_embedding = book.get('image_embedding' if image else 'text_embedding')
+            if not stored_embedding:
+                continue
 
-        embedding = np.array(stored_embedding).reshape(1, -1)
+            embedding = np.array(stored_embedding).reshape(1, -1)
 
-        # Kiểm tra kích thước embedding
-        if embedding.shape[1] != input_embedding.shape[1]:
-            continue
+            # Kiểm tra kích thước embedding
+            if embedding.shape[1] != input_embedding.shape[1]:
+                continue
 
-        # Tính cosine similarity
-        try:
-            similarity = cosine_similarity(input_embedding, embedding)[0][0]
-        except Exception as e:
-            continue
+            # Tính cosine similarity
+            try:
+                similarity = cosine_similarity(input_embedding, embedding)[0][0]
+            except Exception as e:
+                print(f"Error calculating similarity: {str(e)}")
+                continue
 
-        # Thêm sách vào kết quả
-        results.append({
-            "title": book["title"],
-            "price": float(book["price"]),
-            "image_url": book["image_url"],
-            "similarity": float(similarity)
-        })
+            # Thêm sách vào kết quả
+            results.append({
+                "title": book["title"],
+                "price": float(book["price"]),
+                "image_url": book["image_url"],
+                "similarity": float(similarity)
+            })
 
-    # Sắp xếp kết quả và trả về
-    results = sorted(results, key=lambda x: x['similarity'], reverse=True)[:5]
-    return jsonify(results)
+        # Sắp xếp kết quả và trả về
+        results = sorted(results, key=lambda x: x['similarity'], reverse=True)[:5]
+        return jsonify(results)
+
+    except Exception as e:
+        return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
 
 
 if __name__ == '__main__':
