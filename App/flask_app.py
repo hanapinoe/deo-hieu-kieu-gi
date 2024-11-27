@@ -59,7 +59,7 @@ vectorizer = joblib.load('vectorizer.pkl')
 
 # Tiền xử lý ảnh
 def preprocess_image(image_path):
-    transform = transforms.Compose([
+    transform = transforms.Compose([ 
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -79,16 +79,14 @@ def create_text_embedding(title):
     text_embedding = torch.tensor(text_embedding, dtype=torch.float)
     text_embedding = model.text_transform(text_embedding)
     text_embedding = model.forward_once(text_embedding)
-    return text_embedding.detach().numpy().reshape(1, -1)  # Chuyển thành mảng hai chiều
+    return text_embedding.detach().numpy().reshape(1, -1)
 
 # Tạo embedding cho ảnh chỉ với một đầu vào
 def create_image_embedding(image_path):
-    # Tải mô hình ResNet50 đã được huấn luyện trước
     resnet_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-    resnet_model = torch.nn.Sequential(*list(resnet_model.children())[:-1])  # Lấy layer trước classifier
+    resnet_model = torch.nn.Sequential(*list(resnet_model.children())[:-1]) 
     resnet_model.eval()
     
-    # Tiền xử lý ảnh
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
@@ -97,16 +95,14 @@ def create_image_embedding(image_path):
     image = Image.open(image_path).convert('RGB')
     image_tensor = transform(image).unsqueeze(0)
     
-    # Trích xuất đặc trưng từ ảnh
     with torch.no_grad():
         features = resnet_model(image_tensor)
     
-    # Chuyển đổi kích thước của đặc trưng để phù hợp với mô hình SiameseNetwork
     img_embedding = features.view(features.size(0), -1)
     img_embedding = model.img_transform(img_embedding)
     img_embedding = model.forward_once(img_embedding)
     
-    return img_embedding.detach().numpy().reshape(1, -1)  # Chuyển thành mảng hai chiều
+    return img_embedding.detach().numpy().reshape(1, -1)
 
 @app.route('/')
 def index():
@@ -114,7 +110,6 @@ def index():
 
 @app.route('/search', methods=['POST'])
 def search_books():
-    # Tạo thư mục tạm nếu chưa tồn tại
     if not os.path.exists('temp'):
         os.makedirs('temp')
 
@@ -126,12 +121,10 @@ def search_books():
 
     input_embedding = None
 
-    # Xử lý đầu vào từ người dùng
     if image:
         image_path = f"temp/{image.filename}"
         image.save(image_path)
 
-        # Thử OCR trước
         try:
             extracted_text = extract_text_from_image(image_path)
             if extracted_text.strip():
@@ -147,47 +140,36 @@ def search_books():
         except Exception as e:
             return jsonify({"error": f"Lỗi xử lý tiêu đề: {str(e)}"}), 500
 
-    # Kiểm tra embedding đầu vào
     if input_embedding is None or input_embedding.shape[1] not in [101, 2048]:
         return jsonify({"error": "Embedding không hợp lệ."}), 400
 
-    # Lấy tất cả sách từ MongoDB
     books = list(book_collection.find())
     results = []
 
     for book in books:
-        # Lấy embedding từ MongoDB
         stored_embedding = book.get('image_embedding' if image else 'text_embedding')
         if not stored_embedding:
             continue
 
         embedding = np.array(stored_embedding).reshape(1, -1)
 
-        # Kiểm tra kích thước embedding
         if embedding.shape[1] != input_embedding.shape[1]:
-            print(f"Bỏ qua sách '{book['title']}' do không tương thích kích thước embedding.")
             continue
 
-        # Tính cosine similarity
         try:
             similarity = cosine_similarity(input_embedding, embedding)[0][0]
         except Exception as e:
-            print(f"Lỗi khi tính toán similarity cho sách '{book['title']}': {str(e)}")
             continue
 
-        # Thêm sách vào kết quả
         results.append({
             "title": book["title"],
-            "price": float(book["price"]),  # Đảm bảo giá trị price là float
+            "price": float(book["price"]),
             "image_url": book["image_url"],
-            "similarity": float(similarity)  # Đảm bảo similarity là float
+            "similarity": float(similarity)
         })
 
-    # Sắp xếp kết quả và trả về
     results = sorted(results, key=lambda x: x['similarity'], reverse=True)[:5]
     return jsonify(results)
-
-
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
