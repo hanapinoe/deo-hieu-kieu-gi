@@ -40,9 +40,9 @@ csv_file = "books_data.csv"
 books_df = pd.read_csv(csv_file)
 
 for _, row in books_df.iterrows():
-    title = row['title']
-    price = row['price']
-    image_path = row['image_path']
+    title = row['Book Title']
+    price = row['Price']
+    image_path = row['Image Path']
 
     text_embedding = create_text_embedding(title)
     image_embedding = create_image_embedding(image_path)
