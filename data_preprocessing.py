@@ -136,3 +136,4 @@ np.save('test_pairs.npy', test_pairs)
 np.save('test_labels.npy', test_labels)
 
 print("Data for contrastive learning has been prepared successfully.")
+# Lưu embeddings vào file mới để đẩy lên MongoDB df_embeddings = pd.DataFrame(valid_dataset) df_embeddings.to_csv('embeddings_for_mongodb.csv', index=False) print("Embeddings have been saved to embeddings_for_mongodb.csv")
