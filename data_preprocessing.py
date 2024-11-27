@@ -44,12 +44,11 @@ def create_text_embeddings(data):
         df['price'] = 0.0  # Giá trị mặc định nếu không xử lý được
 
     # Thay thế các giá trị thiếu bằng giá trị trung bình của cột `price`
-    df['price'].fillna(df['price'].mean(), inplace=True)
-
-    # Kiểm tra cột `price` không trống sau khi xử lý
-    if df[['price']].isnull().values.any():
-        print("Price column contains null values after processing.")
-        return None  # Hoặc thêm xử lý khác tùy nhu cầu
+    if df['price'].isnull().all():
+        print("All values in the price column are null.")
+        return None
+    else:
+        df['price'].fillna(df['price'].mean(), inplace=True)
 
     # Chuẩn hóa giá
     scaler = StandardScaler()
