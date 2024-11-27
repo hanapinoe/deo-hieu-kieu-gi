@@ -75,7 +75,7 @@ def extract_text_from_image(image_path):
 
 # Tạo embedding cho văn bản
 def create_text_embedding(title):
-    return vectorizer.transform([title]).toarray()[0]
+    return vectorizer.transform([title]).toarray()[0].reshape(1, -1)  # Chuyển thành mảng hai chiều
 
 # Tạo embedding cho ảnh chỉ với một đầu vào
 def create_image_embedding(image_path):
@@ -102,7 +102,7 @@ def create_image_embedding(image_path):
     img_embedding = model.img_transform(img_embedding)
     img_embedding = model.forward_once(img_embedding)
     
-    return img_embedding.detach().numpy()
+    return img_embedding.detach().numpy().reshape(1, -1)  # Chuyển thành mảng hai chiều
 
 @app.route('/')
 def index():
@@ -140,11 +140,11 @@ def search_books():
     for book in books:
         if input_embedding is not None:
             if image:  # So sánh bằng ảnh
-                embedding = np.array(book.get('image_embedding', []))
+                embedding = np.array(book.get('image_embedding', [])).reshape(1, -1)  # Chuyển thành mảng hai chiều
             elif title:  # So sánh bằng tiêu đề
-                embedding = np.array(book.get('text_embedding', []))
+                embedding = np.array(book.get('text_embedding', [])).reshape(1, -1)  # Chuyển thành mảng hai chiều
 
-            similarity = cosine_similarity([input_embedding], [embedding])[0][0]
+            similarity = cosine_similarity(input_embedding, embedding)[0][0]
             results.append({
                 "title": book["title"],
                 "price": book["price"],
