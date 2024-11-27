@@ -1,64 +1,61 @@
-import os
+import pandas as pd
 import pymongo
-import csv
+import torch
+import torchvision.transforms as transforms
+from PIL import Image
+import joblib
 import base64
+import numpy as np
 
-# Kết nối tới MongoDB Compass (localhost:27017)
+# Kết nối MongoDB
 client = pymongo.MongoClient("mongodb://localhost:27017/")
-db = client["bookstore"]  # Tên cơ sở dữ liệu
-collection = db["books"]  # Tên collection
+db = client["book_database"]
+collection = db["books"]
 
-# Đường dẫn tới file CSV và thư mục chứa ảnh
-csv_file_path = "./books_data.csv"  # File CSV chứa tên sách và đường dẫn ảnh
-image_folder_path = "./static/images"  # Thư mục chứa ảnh
+# Tải mô hình ResNet và vectorizer
+resnet_model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet50', pretrained=True)
+resnet_model.eval()
+vectorizer = joblib.load('vectorizer.pkl')
 
-# Kiểm tra xem thư mục ảnh có tồn tại hay không
-if not os.path.exists(image_folder_path):
-    print(f"Không tìm thấy thư mục ảnh: {image_folder_path}")
-    exit()
+def preprocess_image(image_path):
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+    image = Image.open(image_path).convert('RGB')
+    return transform(image).unsqueeze(0)
 
-# Danh sách để lưu các tài liệu sẽ chèn vào MongoDB
-documents = []
+def create_image_embedding(image_path):
+    image_tensor = preprocess_image(image_path)
+    with torch.no_grad():
+        img_embedding = resnet_model(image_tensor).squeeze(0).numpy()
+    return img_embedding.tolist()
 
-# Đọc dữ liệu từ file CSV và xử lý ảnh
-if not os.path.exists(csv_file_path):
-    print(f"Không tìm thấy file CSV: {csv_file_path}")
-    exit()
+def create_text_embedding(title):
+    return vectorizer.transform([title]).toarray()[0].tolist()
 
-# Đọc file CSV
-with open(csv_file_path, 'r', encoding='utf-8') as csv_file:
-    reader = csv.reader(csv_file)  # Đọc dữ liệu dạng list
-    for row in reader:
-        if len(row) == 2:  # Kiểm tra nếu dòng có 2 phần: đường dẫn ảnh và tên sách
-            image_path = row[0].strip()  # Đường dẫn ảnh từ CSV
-            book_title = row[1].strip()  # Tên sách từ CSV
-            
-            # Kiểm tra nếu file ảnh có tồn tại trong thư mục
-            image_name = os.path.basename(image_path)  # Lấy tên ảnh
-            full_image_path = os.path.join(image_folder_path, image_name)  # Đường dẫn đầy đủ ảnh
-            
-            if os.path.exists(full_image_path):
-                # Chuyển đổi ảnh thành Base64
-                with open(full_image_path, "rb") as img_file:
-                    image_data = base64.b64encode(img_file.read()).decode("utf-8")
+# Đọc dữ liệu từ CSV và lưu vào MongoDB
+csv_file = "books_data.csv"
+books_df = pd.read_csv(csv_file)
 
-                # Tạo URL cho ảnh (URL trên localhost sẽ được xây dựng như sau)
-                url = f"http://localhost:5000/images/{image_name}"  # URL ảnh trên localhost
+for _, row in books_df.iterrows():
+    title = row['title']
+    price = row['price']
+    image_path = row['image_path']
 
-                # Tạo document cho MongoDB
-                document = {
-                    "book_title": book_title,  # Tên sách
-                    "image_path": image_path,  # Đường dẫn ảnh trong CSV
-                    "url": url,  # URL ảnh trên localhost
-                    "image_data": f"data:image/jpeg;base64,{image_data}"  # Mã hóa ảnh thành Base64
-                }
-                documents.append(document)
-            else:
-                print(f"Không tìm thấy ảnh với tên: {image_name}")
+    text_embedding = create_text_embedding(title)
+    image_embedding = create_image_embedding(image_path)
 
-# Chèn dữ liệu vào MongoDB
-if documents:
-    result = collection.insert_many(documents)
-    print(f"Đã chèn {len(result.inserted_ids)} tài liệu vào MongoDB.")
-else:
-    print("Không có tài liệu nào để chèn.")
+    with open(image_path, "rb") as img_file:
+        image_base64 = base64.b64encode(img_file.read()).decode("utf-8")
+
+    document = {
+        "title": title,
+        "price": price,
+        "image_embedding": image_embedding,
+        "text_embedding": text_embedding,
+        "image_base64": image_base64,
+    }
+    collection.insert_one(document)
+print("Dữ liệu đã được lưu vào MongoDB.")
