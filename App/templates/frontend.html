@@ -18,7 +18,7 @@
     <div class="container">
         <h1 class="text-center mb-4">Book Search Application</h1>
         <div class="card p-4">
-            <form id="search-form" enctype="multipart/form-data">
+            <form id="search-form">
                 <div class="mb-3">
                     <label for="title" class="form-label">Enter Book Title (Optional)</label>
                     <input type="text" id="title" class="form-control" placeholder="Type a book title">
@@ -42,11 +42,20 @@
             const imageFile = document.getElementById("image").files[0];
 
             let formData = new FormData();
+
+            // Kiểm tra nếu có tiêu đề hoặc hình ảnh
             if (title) {
                 formData.append("title", title);
             }
+
             if (imageFile) {
                 formData.append("image", imageFile);
+            }
+
+            // Kiểm tra nếu không có tiêu đề và không có ảnh
+            if (!title && !imageFile) {
+                alert("Vui lòng cung cấp ít nhất một tiêu đề hoặc hình ảnh.");
+                return;
             }
 
             try {
