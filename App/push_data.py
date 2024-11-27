@@ -6,11 +6,9 @@ import torchvision.transforms as transforms
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import train_test_split
 from torchvision.models import resnet50, ResNet50_Weights
+from pymongo import MongoClient 
 import random
-from pymongo import MongoClient
-
 # Đọc dữ liệu từ file CSV
 data = pd.read_csv('books_data.csv')
 dataset = []
@@ -37,6 +35,7 @@ for _, row in data.iterrows():
 
 # Hàm tạo embedding văn bản
 def create_text_embeddings(data):
+ def create_text_embeddings(data):
     df = pd.DataFrame(data)
     try:
         df['price'] = df['price'].str.replace(r'[₫.,]', '', regex=True).astype(float)
@@ -83,33 +82,36 @@ def create_image_embeddings(data):
 text_embeddings = create_text_embeddings(dataset)
 image_embeddings = create_image_embeddings(dataset)
 
-# Chuẩn hóa embedding một lần
-scaler = StandardScaler()
-text_embeddings = scaler.fit_transform(text_embeddings)
-image_embeddings = scaler.fit_transform(image_embeddings)
+if text_embeddings is not None and image_embeddings is not None:
+    # Chuẩn hóa embedding một lần
+    scaler = StandardScaler()
+    text_embeddings = scaler.fit_transform(text_embeddings)
+    image_embeddings = scaler.fit_transform(image_embeddings)
 
-# Ghép thông tin embedding
-valid_dataset = []
-for idx, d in enumerate(dataset):
-    if idx < len(text_embeddings) and idx < len(image_embeddings):
-        valid_dataset.append({
-            'title': d['title'],
-            'price': d['price'],
-            'text_embedding': text_embeddings[idx].tolist(),  # Convert to list for MongoDB
-            'image_embedding': image_embeddings[idx].tolist()  # Convert to list for MongoDB
-        })
+    # Ghép thông tin embedding
+    valid_dataset = []
+    for idx, d in enumerate(dataset):
+        if idx < len(text_embeddings) and idx < len(image_embeddings):
+            valid_dataset.append({
+                'title': d['title'],
+                'price': d['price'],
+                'text_embedding': text_embeddings[idx].tolist(),  # Convert to list for MongoDB
+                'image_embedding': image_embeddings[idx].tolist()  # Convert to list for MongoDB
+            })
 
-# Hàm đẩy dữ liệu lên MongoDB
-def push_data_to_mongodb(data, db_name='book_db', collection_name='book_embeddings'):
-    client = MongoClient('mongodb://localhost:27017/')  # Thay thế bằng URL của MongoDB nếu cần
-    db = client[db_name]
-    collection = db[collection_name]
-    
-    # Chèn dữ liệu
-    collection.insert_many(data)
-    print(f"Successfully inserted {len(data)} records into the {collection_name} collection in the {db_name} database.")
+    # Hàm đẩy dữ liệu lên MongoDB
+    def push_data_to_mongodb(data, db_name='book_db', collection_name='book_embeddings'):
+        client = MongoClient('mongodb://localhost:27017/')  # Thay thế bằng URL của MongoDB nếu cần
+        db = client[db_name]
+        collection = db[collection_name]
+        
+        # Chèn dữ liệu
+        collection.insert_many(data)
+        print(f"Successfully inserted {len(data)} records into the {collection_name} collection in the {db_name} database.")
 
-# Đẩy dữ liệu lên MongoDB
-push_data_to_mongodb(valid_dataset)
+    # Đẩy dữ liệu lên MongoDB
+    push_data_to_mongodb(valid_dataset)
 
-print("Data for contrastive learning has been prepared and pushed to MongoDB successfully.")
+    print("Data for contrastive learning has been prepared and pushed to MongoDB successfully.")
+else:
+    print("Embedding creation failed. Check the data and try again.")
