@@ -51,8 +51,8 @@ for _, row in books_df.iterrows():
     price = row['Price']
     image_filename = row['Image Path']  # Tên file ảnh từ CSV
 
-    # Loại bỏ "/images" chỉ lần đầu tiên trong tên file ảnh
-    image_filename = image_filename.lstrip('/images')  # Loại bỏ "/images" nếu nó ở đầu
+    # Nếu đường dẫn ảnh có dạng tuyệt đối, chỉ lấy tên file từ đường dẫn
+    image_filename = os.path.basename(image_filename)
 
     # Đảm bảo rằng đường dẫn đúng đến thư mục static/images
     image_path = os.path.join(image_dir, image_filename)
