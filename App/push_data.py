@@ -9,7 +9,7 @@ db = client['bookstore']
 collection = db['books']
 
 # Đọc dữ liệu từ file metadata.csv
-metadata = pd.read_csv('metadata.csv')
+metadata = pd.read_csv('books_metadata.csv')
 
 # Đọc dữ liệu từ file embeddings_for_mongodb.csv
 embeddings = pd.read_csv('embeddings_for_mongodb.csv')
