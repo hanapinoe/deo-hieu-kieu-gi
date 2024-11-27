@@ -43,6 +43,14 @@ def create_text_embeddings(data):
         print(f"Error processing price column: {e}")
         df['price'] = 0.0  # Giá trị mặc định nếu không xử lý được
 
+    # Thay thế các giá trị thiếu bằng giá trị trung bình của cột `price`
+    df['price'].fillna(df['price'].mean(), inplace=True)
+
+    # Kiểm tra cột `price` không trống sau khi xử lý
+    if df[['price']].isnull().values.any():
+        print("Price column contains null values after processing.")
+        return None  # Hoặc thêm xử lý khác tùy nhu cầu
+
     # Chuẩn hóa giá
     scaler = StandardScaler()
     df['price_scaled'] = scaler.fit_transform(df[['price']])
@@ -82,58 +90,28 @@ def create_image_embeddings(data):
 text_embeddings = create_text_embeddings(dataset)
 image_embeddings = create_image_embeddings(dataset)
 
-# Chuẩn hóa embedding một lần
-scaler = StandardScaler()
-text_embeddings = scaler.fit_transform(text_embeddings)
-image_embeddings = scaler.fit_transform(image_embeddings)
+if text_embeddings is not None and image_embeddings is not None:
+    # Chuẩn hóa embedding một lần
+    scaler = StandardScaler()
+    text_embeddings = scaler.fit_transform(text_embeddings)
+    image_embeddings = scaler.fit_transform(image_embeddings)
 
-# Ghép thông tin embedding
-valid_dataset = []
-for idx, d in enumerate(dataset):
-    if idx < len(text_embeddings) and idx < len(image_embeddings):
-        valid_dataset.append({
-            'text_embedding': text_embeddings[idx],
-            'image_embedding': image_embeddings[idx]
-        })
+    # Ghép thông tin embedding
+    valid_dataset = []
+    for idx, d in enumerate(dataset):
+        if idx < len(text_embeddings) and idx < len(image_embeddings):
+            valid_dataset.append({
+                'title': d['title'],
+                'price': d['price'],
+                'text_embedding': text_embeddings[idx].tolist(),  # Convert to list for MongoDB
+                'image_embedding': image_embeddings[idx].tolist()  # Convert to list for MongoDB
+            })
 
-# Tạo các cặp dữ liệu (positive/negative pairs)
-def create_pairs(data, num_negative_samples=1):
-    pairs = []
-    labels = []
+    # Lưu embeddings vào file mới để đẩy lên MongoDB
+    df_embeddings = pd.DataFrame(valid_dataset)
+    df_embeddings.to_csv('embeddings_for_mongodb.csv', index=False)
 
-    # Tạo positive pairs
-    for item in data:
-        pairs.append((item['image_embedding'], item['text_embedding']))
-        labels.append(1)
+    print("Embeddings have been saved to embeddings_for_mongodb.csv")
 
-    # Tạo negative pairs
-    data_len = len(data)
-    for _ in range(num_negative_samples * data_len):
-        while True:
-            img_idx = random.randint(0, data_len - 1)
-            text_idx = random.randint(0, data_len - 1)
-            if img_idx != text_idx:  # Đảm bảo không chọn cặp giống nhau
-                break
-        pairs.append((data[img_idx]['image_embedding'], data[text_idx]['text_embedding']))
-        labels.append(0)
-
-    return pairs, labels
-
-# Tạo pairs và labels
-pairs, labels = create_pairs(valid_dataset)
-
-# Chuyển pairs thành numpy array
-pairs_array = np.array([(np.array(p[0]), np.array(p[1])) for p in pairs], dtype=object)
-labels_array = np.array(labels)
-
-# Chia dữ liệu train/test
-train_pairs, test_pairs, train_labels, test_labels = train_test_split(pairs_array, labels_array, test_size=0.2, random_state=42)
-
-# Lưu dữ liệu train/test
-np.save('train_pairs.npy', train_pairs)
-np.save('train_labels.npy', train_labels)
-np.save('test_pairs.npy', test_pairs)
-np.save('test_labels.npy', test_labels)
-
-print("Data for contrastive learning has been prepared successfully.")
-# Lưu embeddings vào file mới để đẩy lên MongoDB df_embeddings = pd.DataFrame(valid_dataset) df_embeddings.to_csv('embeddings_for_mongodb.csv', index=False) print("Embeddings have been saved to embeddings_for_mongodb.csv")
+else:
+    print("Embedding creation failed. Check the data and try again.")
