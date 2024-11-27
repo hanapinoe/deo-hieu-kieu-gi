@@ -49,7 +49,7 @@ for _, row in books_df.iterrows():
     image_filename = row['Image Path']  # Tên file ảnh từ CSV
 
     # Đảm bảo rằng đường dẫn đúng đến thư mục static/images
-    image_path = os.path.join('static', 'images', image_filename)
+    image_path = os.path.join('static', image_filename)
 
     # Kiểm tra nếu tệp hình ảnh tồn tại
     if not os.path.exists(image_path):
