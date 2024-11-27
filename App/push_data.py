@@ -51,6 +51,11 @@ for _, row in books_df.iterrows():
     price = row['Price']
     image_filename = row['Image Path']  # Tên file ảnh từ CSV
 
+    # Kiểm tra nếu trường 'Image Path' là 'No Image' hoặc trống
+    if image_filename.lower() == 'no image' or not image_filename:
+        print(f"Lỗi: Không có hình ảnh cho {title}")
+        continue  # Bỏ qua dòng này nếu không có ảnh
+
     # Nếu đường dẫn ảnh có dạng tuyệt đối, chỉ lấy tên file từ đường dẫn
     image_filename = os.path.basename(image_filename)
 
