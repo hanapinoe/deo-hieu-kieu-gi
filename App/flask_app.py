@@ -144,30 +144,21 @@ def search_books():
     results = []
 
     for book in books:
-        # Lấy embedding lưu trữ từ MongoDB
         stored_embedding = book.get('image_embedding' if image else 'text_embedding')
         embedding = np.array(stored_embedding).reshape(1, -1)
 
-        # Kiểm tra kích thước và chuẩn hóa nếu cần
-        if embedding.shape[1] != input_embedding.shape[1]:
-            if embedding.shape[1] == 2048:  # Nếu là đặc trưng ResNet50 gốc
-                embedding_tensor = torch.tensor(embedding, dtype=torch.float)
-                embedding_tensor = model.img_transform(embedding_tensor)
-                embedding_tensor = model.forward_once(embedding_tensor)
-                embedding = embedding_tensor.detach().numpy().reshape(1, -1)
-            else:
-                continue  # Bỏ qua nếu không xử lý được
-
         # Tính cosine similarity
         similarity = cosine_similarity(input_embedding, embedding)[0][0]
+        
+        # Chuyển đổi float32 sang float để tránh lỗi JSON serialize
         results.append({
             "title": book["title"],
-            "price": book["price"],
+            "price": float(book["price"]),  # Đảm bảo giá trị price là float
             "image_url": book["image_url"],
-            "similarity": similarity
+            "similarity": float(similarity)  # Đảm bảo similarity là float
         })
 
-    # Trả về top 5 kết quả
+    # Sắp xếp kết quả và trả về
     results = sorted(results, key=lambda x: x['similarity'], reverse=True)[:5]
     return jsonify(results)
 
