@@ -4,7 +4,6 @@ from PIL import Image
 import torch
 import torchvision.transforms as transforms
 import numpy as np
-from sklearn.preprocessing import StandardScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from torchvision.models import resnet50, ResNet50_Weights
@@ -34,31 +33,15 @@ for _, row in data.iterrows():
         except IOError as e:
             print(f"Error opening image {full_image_path}: {e}")
 
-# Hàm tạo embedding văn bản
+# Hàm tạo embedding văn bản chỉ cho tiêu đề
 def create_text_embeddings(data):
     df = pd.DataFrame(data)
-    try:
-        df['price'] = df['price'].str.replace(r'[₫.,]', '', regex=True).astype(float)
-    except Exception as e:
-        print(f"Error processing price column: {e}")
-        df['price'] = 0.0  # Giá trị mặc định nếu không xử lý được
-
-    # Thay thế các giá trị thiếu bằng giá trị trung bình của cột `price`
-    if df['price'].isnull().all():
-        print("All values in the price column are null.")
-        return None
-    else:
-        df['price'].fillna(df['price'].mean(), inplace=True)
-
-    # Chuẩn hóa giá
-    scaler = StandardScaler()
-    df['price_scaled'] = scaler.fit_transform(df[['price']])
 
     # Tạo embedding tiêu đề bằng TF-IDF
     vectorizer = TfidfVectorizer(max_features=100)
     title_embeddings = vectorizer.fit_transform(df['title']).toarray()
 
-    return np.hstack((title_embeddings, df[['price_scaled']].values))
+    return title_embeddings
 
 # Hàm tạo embedding ảnh
 def create_image_embeddings(data):
@@ -89,28 +72,24 @@ def create_image_embeddings(data):
 text_embeddings = create_text_embeddings(dataset)
 image_embeddings = create_image_embeddings(dataset)
 
-if text_embeddings is not None and image_embeddings is not None:
-    # Chuẩn hóa embedding một lần
-    scaler = StandardScaler()
-    text_embeddings = scaler.fit_transform(text_embeddings)
-    image_embeddings = scaler.fit_transform(image_embeddings)
+# Chuẩn hóa embedding một lần
+scaler = StandardScaler()
+text_embeddings = scaler.fit_transform(text_embeddings)
+image_embeddings = scaler.fit_transform(image_embeddings)
 
-    # Ghép thông tin embedding
-    valid_dataset = []
-    for idx, d in enumerate(dataset):
-        if idx < len(text_embeddings) and idx < len(image_embeddings):
-            valid_dataset.append({
-                'title': d['title'],
-                'price': d['price'],
-                'text_embedding': text_embeddings[idx].tolist(),  # Convert to list for MongoDB
-                'image_embedding': image_embeddings[idx].tolist()  # Convert to list for MongoDB
-            })
+# Ghép thông tin embedding
+valid_dataset = []
+for idx, d in enumerate(dataset):
+    if idx < len(text_embeddings) and idx < len(image_embeddings):
+        valid_dataset.append({
+            'title': d['title'],
+            'price': d['price'],
+            'text_embedding': text_embeddings[idx].tolist(),  # Convert to list for MongoDB
+            'image_embedding': image_embeddings[idx].tolist()  # Convert to list for MongoDB
+        })
 
-    # Lưu embeddings vào file mới để đẩy lên MongoDB
-    df_embeddings = pd.DataFrame(valid_dataset)
-    df_embeddings.to_csv('embeddings_for_mongodb.csv', index=False)
+# Lưu embeddings vào file mới để đẩy lên MongoDB
+df_embeddings = pd.DataFrame(valid_dataset)
+df_embeddings.to_csv('embeddings_for_mongodb.csv', index=False)
 
-    print("Embeddings have been saved to embeddings_for_mongodb.csv")
-
-else:
-    print("Embedding creation failed. Check the data and try again.")
+print("Embeddings have been saved to embeddings_for_mongodb.csv")
