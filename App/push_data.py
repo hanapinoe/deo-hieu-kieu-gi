@@ -43,7 +43,7 @@ csv_file = "books_data.csv"
 books_df = pd.read_csv(csv_file)
 
 # Đường dẫn thư mục chứa ảnh
-image_dir = os.path.join(os.getcwd(), 'static', 'images')
+image_dir = os.path.join(os.getcwd(), 'static')
 
 # Duyệt qua từng dòng trong DataFrame
 for _, row in books_df.iterrows():
