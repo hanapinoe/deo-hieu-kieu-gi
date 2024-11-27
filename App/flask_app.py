@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory, render_template
+from flask import Flask, request, jsonify, render_template
 import torch
 import torchvision.transforms as transforms
 from PIL import Image
@@ -9,6 +9,9 @@ import os
 import joblib
 import pytesseract  # Thư viện OCR
 from flask_cors import CORS
+
+# Đặt đường dẫn đến tesseract
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 # Khởi tạo Flask app
 app = Flask(__name__)
@@ -77,14 +80,15 @@ def create_text_embedding(title):
 def create_image_embedding(image_path):
     image_tensor = preprocess_image(image_path)
     with torch.no_grad():
-        img_embedding, _ = model(image_tensor.view(-1, img_embedding_dim))
+        features = model(image_tensor)
+    
+    img_embedding = features.view(features.size(0), -1)  # Đảm bảo kích thước đúng
     return img_embedding.numpy()
 
 @app.route('/')
 def index():
     return render_template('frontend.html')
 
-# Tìm kiếm sách
 @app.route('/search', methods=['POST'])
 def search_books():
     if not os.path.exists('temp'):
