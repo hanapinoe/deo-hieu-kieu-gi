@@ -75,7 +75,11 @@ def extract_text_from_image(image_path):
 
 # Tạo embedding cho văn bản
 def create_text_embedding(title):
-    return vectorizer.transform([title]).toarray()[0].reshape(1, -1)  # Chuyển thành mảng hai chiều
+    text_embedding = vectorizer.transform([title]).toarray()
+    text_embedding = torch.tensor(text_embedding, dtype=torch.float)
+    text_embedding = model.text_transform(text_embedding)
+    text_embedding = model.forward_once(text_embedding)
+    return text_embedding.detach().numpy().reshape(1, -1)  # Chuyển thành mảng hai chiều
 
 # Tạo embedding cho ảnh chỉ với một đầu vào
 def create_image_embedding(image_path):
