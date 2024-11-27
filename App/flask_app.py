@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, render_template
 import torch
 import torchvision.transforms as transforms
+from torchvision.models import resnet50, ResNet50_Weights
 from PIL import Image
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
@@ -78,10 +79,30 @@ def create_text_embedding(title):
 
 # Tạo embedding cho ảnh chỉ với một đầu vào
 def create_image_embedding(image_path):
-    image_tensor = preprocess_image(image_path)
+    # Tải mô hình ResNet50 đã được huấn luyện trước
+    resnet_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+    resnet_model = torch.nn.Sequential(*list(resnet_model.children())[:-1])  # Lấy layer trước classifier
+    resnet_model.eval()
+    
+    # Tiền xử lý ảnh
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    image = Image.open(image_path).convert('RGB')
+    image_tensor = transform(image).unsqueeze(0)
+    
+    # Trích xuất đặc trưng từ ảnh
     with torch.no_grad():
-        img_embedding, _ = model.forward_once(model.img_transform(image_tensor.view(image_tensor.size(0), -1)))
-    return img_embedding.numpy()
+        features = resnet_model(image_tensor)
+    
+    # Chuyển đổi kích thước của đặc trưng để phù hợp với mô hình SiameseNetwork
+    img_embedding = features.view(features.size(0), -1)
+    img_embedding = model.img_transform(img_embedding)
+    img_embedding = model.forward_once(img_embedding)
+    
+    return img_embedding.detach().numpy()
 
 @app.route('/')
 def index():
