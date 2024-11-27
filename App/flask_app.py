@@ -114,6 +114,7 @@ def index():
 
 @app.route('/search', methods=['POST'])
 def search_books():
+    # Tạo thư mục tạm nếu chưa tồn tại
     if not os.path.exists('temp'):
         os.makedirs('temp')
 
@@ -130,27 +131,51 @@ def search_books():
         image_path = f"temp/{image.filename}"
         image.save(image_path)
 
-        # Thử OCR, nếu thất bại dùng embedding ảnh
-        extracted_text = extract_text_from_image(image_path)
-        if extracted_text:
-            input_embedding = create_text_embedding(extracted_text)
-        else:
-            input_embedding = create_image_embedding(image_path)
+        # Thử OCR trước
+        try:
+            extracted_text = extract_text_from_image(image_path)
+            if extracted_text.strip():
+                input_embedding = create_text_embedding(extracted_text)
+            else:
+                input_embedding = create_image_embedding(image_path)
+        except Exception as e:
+            return jsonify({"error": f"Lỗi xử lý ảnh: {str(e)}"}), 500
+
     elif title:
-        input_embedding = create_text_embedding(title)
+        try:
+            input_embedding = create_text_embedding(title)
+        except Exception as e:
+            return jsonify({"error": f"Lỗi xử lý tiêu đề: {str(e)}"}), 500
+
+    # Kiểm tra embedding đầu vào
+    if input_embedding is None or input_embedding.shape[1] not in [101, 2048]:
+        return jsonify({"error": "Embedding không hợp lệ."}), 400
 
     # Lấy tất cả sách từ MongoDB
     books = list(book_collection.find())
     results = []
 
     for book in books:
+        # Lấy embedding từ MongoDB
         stored_embedding = book.get('image_embedding' if image else 'text_embedding')
+        if not stored_embedding:
+            continue
+
         embedding = np.array(stored_embedding).reshape(1, -1)
 
+        # Kiểm tra kích thước embedding
+        if embedding.shape[1] != input_embedding.shape[1]:
+            print(f"Bỏ qua sách '{book['title']}' do không tương thích kích thước embedding.")
+            continue
+
         # Tính cosine similarity
-        similarity = cosine_similarity(input_embedding, embedding)[0][0]
-        
-        # Chuyển đổi float32 sang float để tránh lỗi JSON serialize
+        try:
+            similarity = cosine_similarity(input_embedding, embedding)[0][0]
+        except Exception as e:
+            print(f"Lỗi khi tính toán similarity cho sách '{book['title']}': {str(e)}")
+            continue
+
+        # Thêm sách vào kết quả
         results.append({
             "title": book["title"],
             "price": float(book["price"]),  # Đảm bảo giá trị price là float
@@ -161,6 +186,7 @@ def search_books():
     # Sắp xếp kết quả và trả về
     results = sorted(results, key=lambda x: x['similarity'], reverse=True)[:5]
     return jsonify(results)
+
 
 
 if __name__ == '__main__':
