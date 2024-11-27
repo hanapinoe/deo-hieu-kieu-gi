@@ -1,6 +1,7 @@
 import pandas as pd
 from pymongo import MongoClient
 import json
+import ast
 import os
 
 # Kết nối tới MongoDB
@@ -9,14 +10,21 @@ db = client['bookstore']
 collection = db['books']
 
 # Đọc dữ liệu từ file metadata.csv
-metadata = pd.read_csv('books_metadata.csv')
+metadata = pd.read_csv('metadata.csv')
 
 # Đọc dữ liệu từ file embeddings_for_mongodb.csv
 embeddings = pd.read_csv('embeddings_for_mongodb.csv')
 
-# Chuyển đổi các cột embedding từ chuỗi JSON sang list (nếu cần thiết)
-embeddings['text_embedding'] = embeddings['text_embedding'].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
-embeddings['image_embedding'] = embeddings['image_embedding'].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
+# Chuyển đổi các cột embedding từ chuỗi JSON sang list
+embeddings['text_embedding'] = embeddings['text_embedding'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
+embeddings['image_embedding'] = embeddings['image_embedding'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
+
+# Kiểm tra kích thước của các embeddings
+for i, row in embeddings.iterrows():
+    if len(row['text_embedding']) != 100:
+        print(f"Warning: Text embedding at index {i} has incorrect length: {len(row['text_embedding'])}")
+    if len(row['image_embedding']) != 1000:
+        print(f"Warning: Image embedding at index {i} has incorrect length: {len(row['image_embedding'])}")
 
 # Tạo URL hình ảnh từ đường dẫn ảnh trong metadata
 metadata['image_url'] = metadata['title'].apply(lambda x: os.path.join('./static/images', x.replace(' ', '_').lower() + '.jpg'))
