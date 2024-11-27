@@ -1,22 +1,11 @@
-import pandas as pd
+import pandas as pd 
 from sklearn.feature_extraction.text import TfidfVectorizer
 import joblib
 import os
 
 def create_vectorizer(csv_file_path, output_file_path, max_features=100):
-    """
-    Tạo và lưu TfidfVectorizer từ tiêu đề sách trong file CSV.
+    
 
-    Args:
-        csv_file_path (str): Đường dẫn tới file CSV chứa dữ liệu.
-        output_file_path (str): Đường dẫn lưu file vectorizer .pkl.
-        max_features (int): Số lượng từ vựng tối đa cho TfidfVectorizer.
-
-    Returns:
-        None
-    """
-
-    csv_file_path = './books_metadata.csv' 
     # Kiểm tra file CSV
     if not os.path.exists(csv_file_path):
         print(f"Không tìm thấy file CSV: {csv_file_path}")
@@ -30,8 +19,8 @@ def create_vectorizer(csv_file_path, output_file_path, max_features=100):
         print("File CSV không có cột 'title'.")
         return
 
-    # Lấy danh sách tiêu đề sách
-    titles = books_df['title'].dropna().tolist()  # Loại bỏ các giá trị null
+    # Lấy danh sách tiêu đề sách và loại bỏ các giá trị null
+    titles = books_df['title'].dropna().tolist()
 
     if not titles:
         print("Không có dữ liệu tiêu đề sách trong file CSV.")
@@ -46,6 +35,6 @@ def create_vectorizer(csv_file_path, output_file_path, max_features=100):
     print(f"Vectorizer đã được lưu thành công vào '{output_file_path}'")
 
 # Sử dụng hàm để tạo vectorizer
-csv_file = 'books_data.csv'  # Đường dẫn tới file CSV
-output_file = 'vectorizer.pkl'  # Đường dẫn lưu vectorizer
+csv_file = 'books_metadata.csv'  # Đảm bảo đường dẫn đúng tới file CSV
+output_file = 'vectorizer.pkl'  # Đảm bảo đường dẫn đúng để lưu file .pkl
 create_vectorizer(csv_file, output_file)
