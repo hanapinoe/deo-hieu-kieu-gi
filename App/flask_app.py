@@ -125,11 +125,12 @@ def search_books():
 
     input_embedding = None
 
+    # Xử lý đầu vào từ người dùng
     if image:
         image_path = f"temp/{image.filename}"
         image.save(image_path)
 
-        # Sử dụng OCR trước, nếu thất bại dùng embedding ảnh
+        # Thử OCR, nếu thất bại dùng embedding ảnh
         extracted_text = extract_text_from_image(image_path)
         if extracted_text:
             input_embedding = create_text_embedding(extracted_text)
@@ -138,27 +139,38 @@ def search_books():
     elif title:
         input_embedding = create_text_embedding(title)
 
+    # Lấy tất cả sách từ MongoDB
     books = list(book_collection.find())
     results = []
 
     for book in books:
-        if input_embedding is not None:
-            if image:  # So sánh bằng ảnh
-                embedding = np.array(book.get('image_embedding', [])).reshape(1, -1)  # Chuyển thành mảng hai chiều
-            elif title:  # So sánh bằng tiêu đề
-                embedding = np.array(book.get('text_embedding', [])).reshape(1, -1)  # Chuyển thành mảng hai chiều
+        # Lấy embedding lưu trữ từ MongoDB
+        stored_embedding = book.get('image_embedding' if image else 'text_embedding')
+        embedding = np.array(stored_embedding).reshape(1, -1)
 
-            similarity = cosine_similarity(input_embedding, embedding)[0][0]
-            results.append({
-                "title": book["title"],
-                "price": book["price"],
-                "image_url": book["image_url"],
-                "similarity": similarity
-            })
+        # Kiểm tra kích thước và chuẩn hóa nếu cần
+        if embedding.shape[1] != input_embedding.shape[1]:
+            if embedding.shape[1] == 2048:  # Nếu là đặc trưng ResNet50 gốc
+                embedding_tensor = torch.tensor(embedding, dtype=torch.float)
+                embedding_tensor = model.img_transform(embedding_tensor)
+                embedding_tensor = model.forward_once(embedding_tensor)
+                embedding = embedding_tensor.detach().numpy().reshape(1, -1)
+            else:
+                continue  # Bỏ qua nếu không xử lý được
 
+        # Tính cosine similarity
+        similarity = cosine_similarity(input_embedding, embedding)[0][0]
+        results.append({
+            "title": book["title"],
+            "price": book["price"],
+            "image_url": book["image_url"],
+            "similarity": similarity
+        })
+
+    # Trả về top 5 kết quả
     results = sorted(results, key=lambda x: x['similarity'], reverse=True)[:5]
-
     return jsonify(results)
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

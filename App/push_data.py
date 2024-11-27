@@ -29,24 +29,37 @@ for i, row in embeddings.iterrows():
 # Tạo URL hình ảnh từ đường dẫn ảnh trong metadata
 metadata['image_url'] = metadata['title'].apply(lambda x: os.path.join('./static/images', x.replace(' ', '_').lower() + '.jpg'))
 
-# Tổng hợp dữ liệu từ metadata và embeddings
-data_to_insert = []
+# Đảm bảo embedding có kích thước phù hợp với mô hình
+valid_data_to_insert = []
 for _, row in metadata.iterrows():
     embedding_row = embeddings[embeddings['title'] == row['title']]
     if not embedding_row.empty:
         embedding_row = embedding_row.iloc[0]
+        
+        # Kiểm tra và sửa kích thước embedding
+        text_embedding = embedding_row['text_embedding']
+        image_embedding = embedding_row['image_embedding']
+        
+        if len(text_embedding) != 101:  # Mô hình của bạn yêu cầu text_embedding kích thước 101
+            print(f"Skipping title '{row['title']}' due to incorrect text_embedding size: {len(text_embedding)}")
+            continue
+        if len(image_embedding) != 2048:  # ResNet50 yêu cầu image_embedding kích thước 2048
+            print(f"Skipping title '{row['title']}' due to incorrect image_embedding size: {len(image_embedding)}")
+            continue
+
         document = {
             "title": row['title'],
             "price": row['price'],
             "image_url": row['image_url'],
-            "text_embedding": embedding_row['text_embedding'],  # Đã chuyển đổi thành list
-            "image_embedding": embedding_row['image_embedding']  # Đã chuyển đổi thành list
+            "text_embedding": text_embedding,
+            "image_embedding": image_embedding
         }
-        data_to_insert.append(document)
+        valid_data_to_insert.append(document)
 
-# Chèn dữ liệu vào MongoDB
-if data_to_insert:
-    collection.insert_many(data_to_insert)
-    print(f"Successfully inserted {len(data_to_insert)} records into the books collection in the bookstore database.")
+# Chèn dữ liệu hợp lệ vào MongoDB
+if valid_data_to_insert:
+    collection.insert_many(valid_data_to_insert)
+    print(f"Successfully inserted {len(valid_data_to_insert)} records into the books collection in the bookstore database.")
 else:
-    print("No records to insert. Please check the data.")
+    print("No valid records to insert. Please check the data.")
+
