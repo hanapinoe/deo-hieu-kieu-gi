@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, render_template
 import torch
 import torchvision.transforms as transforms
 from PIL import Image
@@ -7,18 +7,16 @@ from sklearn.metrics.pairwise import cosine_similarity
 from pymongo import MongoClient
 import os
 import joblib
-import pytesseract  # Thêm thư viện Tesseract OCR
+import pytesseract  # Thư viện OCR
 from flask_cors import CORS
 
 # Khởi tạo Flask app
 app = Flask(__name__)
-
-# Cho phép CORS cho tất cả các domain
-CORS(app)
+CORS(app)  # Cho phép CORS
 
 # Kết nối với MongoDB
-client = MongoClient('mongodb://localhost:27017/')  # Cập nhật với chuỗi kết nối MongoDB của bạn
-db = client['book_database']
+client = MongoClient('mongodb://localhost:27017/')
+db = client['bookstore']
 book_collection = db['books']
 
 # Tải mô hình Siamese đã huấn luyện
@@ -46,16 +44,18 @@ class SiameseNetwork(torch.nn.Module):
         output2 = self.forward_once(text_embedding)
         return output1, output2
 
-# Tải mô hình đã huấn luyện
-img_embedding_dim = 2048  # Kích thước embedding ảnh từ ResNet-50
-text_embedding_dim = 101  # Kích thước embedding văn bản từ vectorizer
+# Tải mô hình và vectorizer
+img_embedding_dim = 2048
+text_embedding_dim = 101
 model = SiameseNetwork(img_embedding_dim, text_embedding_dim, output_dim=128)
-model.load_state_dict(torch.load('siamese_model.pth'))  # Tải mô hình Siamese đã huấn luyện
+model.load_state_dict(torch.load('siamese_model.pth'))
 model.eval()
 
-# Tiền xử lý ảnh cho mô hình ResNet-50
+vectorizer = joblib.load('vectorizer.pkl')
+
+# Tiền xử lý ảnh
 def preprocess_image(image_path):
-    transform = transforms.Compose([ 
+    transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -63,18 +63,15 @@ def preprocess_image(image_path):
     image = Image.open(image_path).convert('RGB')
     return transform(image).unsqueeze(0)
 
-# Trích xuất văn bản từ ảnh sử dụng Tesseract OCR
+# Trích xuất văn bản từ ảnh bằng OCR
 def extract_text_from_image(image_path):
     image = Image.open(image_path)
     extracted_text = pytesseract.image_to_string(image)
     return extracted_text.strip()
 
-# Tạo embedding cho văn bản (tiêu đề sách)
+# Tạo embedding cho văn bản
 def create_text_embedding(title):
-    # Tải vectorizer đã huấn luyện từ file 'vectorizer.pkl'
-    vectorizer = joblib.load('vectorizer.pkl')  # Tải vectorizer đã lưu
-    text_embedding = vectorizer.transform([title]).toarray()[0]
-    return text_embedding
+    return vectorizer.transform([title]).toarray()[0]
 
 # Tạo embedding cho ảnh
 def create_image_embedding(image_path):
@@ -83,61 +80,59 @@ def create_image_embedding(image_path):
         img_embedding, _ = model(image_tensor.view(-1, img_embedding_dim))
     return img_embedding.numpy()
 
-from flask import render_template
-
 @app.route('/')
 def index():
     return render_template('frontend.html')
 
-
-# Tìm kiếm sách dựa trên ảnh hoặc tiêu đề
+# Tìm kiếm sách
 @app.route('/search', methods=['POST'])
 def search_books():
-    # Đảm bảo thư mục temp tồn tại
     if not os.path.exists('temp'):
         os.makedirs('temp')
 
-    # Lấy dữ liệu từ yêu cầu
     image = request.files.get('image')
     title = request.form.get('title')
 
     if not image and not title:
         return jsonify({"error": "Vui lòng cung cấp ảnh hoặc tiêu đề."}), 400
 
-    # Xử lý dữ liệu đầu vào
     input_embedding = None
+
     if image:
         image_path = f"temp/{image.filename}"
         image.save(image_path)
 
-        # Trích xuất văn bản từ hình ảnh nếu có ảnh
-        extracted_text = extract_text_from_image(image_path)  # OCR để lấy văn bản từ ảnh
-        if extracted_text:  # Nếu có văn bản từ OCR, sử dụng văn bản đó để tạo embedding
+        # Sử dụng OCR trước, nếu thất bại dùng embedding ảnh
+        extracted_text = extract_text_from_image(image_path)
+        if extracted_text:
             input_embedding = create_text_embedding(extracted_text)
-        else:  # Nếu không có văn bản, dùng embedding của ảnh
+        else:
             input_embedding = create_image_embedding(image_path)
     elif title:
         input_embedding = create_text_embedding(title)
 
-    # Lấy danh sách sách từ MongoDB
     books = list(book_collection.find())
-    book_list = []
+    results = []
+
     for book in books:
-        if 'embedding' in book and 'title' in book:
-            book_list.append({
-                "title": book['title'],
-                "embedding": np.array(book['embedding']),
-                "metadata": book.get('metadata', 'N/A')
+        if input_embedding is not None:
+            if image:  # So sánh bằng ảnh
+                embedding = np.array(book.get('image_embedding', []))
+            elif title:  # So sánh bằng tiêu đề
+                embedding = np.array(book.get('text_embedding', []))
+
+            similarity = cosine_similarity([input_embedding], [embedding])[0][0]
+            results.append({
+                "title": book["title"],
+                "price": book["price"],
+                "image_url": book["image_url"],
+                "similarity": similarity
             })
 
-    # Tính toán độ tương đồng cosine
-    embeddings = np.array([book['embedding'] for book in book_list])
-    similarities = cosine_similarity([input_embedding], embeddings)[0]
-    top_matches = sorted(zip(book_list, similarities), key=lambda x: x[1], reverse=True)[:5]
+    # Sắp xếp theo độ tương đồng
+    results = sorted(results, key=lambda x: x['similarity'], reverse=True)[:5]
 
-    # Trả về 5 kết quả có độ tương đồng cao nhất
-    response = [{"title": match[0]['title'], "similarity": match[1], "metadata": match[0]['metadata']} for match in top_matches]
-    return jsonify(response)
+    return jsonify(results)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
