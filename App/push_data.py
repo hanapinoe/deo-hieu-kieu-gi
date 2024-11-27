@@ -29,37 +29,41 @@ metadata['image_url'] = metadata['title'].apply(
     lambda x: os.path.join('./static/images', x.replace(' ', '_').lower() + '.jpg')
 )
 
-# Kiểm tra dữ liệu trước khi chèn
+# Kiểm tra và sửa kích thước embedding
 valid_data_to_insert = []
 for _, row in metadata.iterrows():
     embedding_row = embeddings[embeddings['title'] == row['title']]
     if not embedding_row.empty:
-        embedding_row = embedding_row.iloc[0]  # Lấy dòng tương ứng
-
-        # Kiểm tra kích thước embedding
+        embedding_row = embedding_row.iloc[0]
+        
+        # Kiểm tra và sửa kích thước embedding
         text_embedding = embedding_row['text_embedding']
         image_embedding = embedding_row['image_embedding']
-
-        if len(text_embedding) != 101:
-            print(f"Bỏ qua sách '{row['title']}' vì kích thước text_embedding không hợp lệ: {len(text_embedding)}")
+        
+        # Kiểm tra nếu text_embedding có kích thước 101
+        if len(text_embedding) != 101:  # Mô hình của bạn yêu cầu text_embedding kích thước 101
+            print(f"Skipping title '{row['title']}' due to incorrect text_embedding size: {len(text_embedding)}")
             continue
-        if len(image_embedding) != 2048:
-            print(f"Bỏ qua sách '{row['title']}' vì kích thước image_embedding không hợp lệ: {len(image_embedding)}")
+        
+        # Kiểm tra nếu image_embedding có kích thước 2048
+        if len(image_embedding) != 2048:  # ResNet50 yêu cầu image_embedding kích thước 2048
+            print(f"Skipping title '{row['title']}' due to incorrect image_embedding size: {len(image_embedding)}")
             continue
 
-        # Tạo document
+        # Tạo document hợp lệ để chèn vào MongoDB
         document = {
             "title": row['title'],
-            "price": float(row['price']),  # Chuyển sang float để tránh lỗi serialize
+            "price": row['price'],
             "image_url": row['image_url'],
-            "text_embedding": [float(x) for x in text_embedding],  # Đảm bảo là list of floats
-            "image_embedding": [float(x) for x in image_embedding]
+            "text_embedding": text_embedding,
+            "image_embedding": image_embedding
         }
         valid_data_to_insert.append(document)
 
 # Chèn dữ liệu hợp lệ vào MongoDB
 if valid_data_to_insert:
     collection.insert_many(valid_data_to_insert)
-    print(f"Đã chèn thành công {len(valid_data_to_insert)} bản ghi vào MongoDB.")
+    print(f"Successfully inserted {len(valid_data_to_insert)} records into the books collection in the bookstore database.")
 else:
-    print("Không có bản ghi hợp lệ để chèn vào MongoDB. Kiểm tra dữ liệu của bạn.")
+    print("No valid records to insert. Please check the data.")
+
