@@ -52,7 +52,7 @@ for _, row in books_df.iterrows():
     image_filename = row['Image Path']  # Tên file ảnh từ CSV
 
     # Loại bỏ "/images" khỏi tên file ảnh
-    image_filename = image_filename.replace('/images', '')
+    image_filename = image_filename.replace('/images', '')  # Loại bỏ phần /images nếu có
     # Đảm bảo rằng đường dẫn đúng đến thư mục static/images
     image_path = os.path.join(image_dir, image_filename)
 
