@@ -5,7 +5,6 @@ import torchvision.transforms as transforms
 from PIL import Image
 import joblib
 import base64
-import numpy as np
 import os
 
 # Kết nối MongoDB
@@ -43,13 +42,17 @@ def create_text_embedding(title):
 csv_file = "books_data.csv"
 books_df = pd.read_csv(csv_file)
 
+# Đường dẫn thư mục chứa ảnh
+image_dir = os.path.join(os.getcwd(), 'static', 'images')
+
+# Duyệt qua từng dòng trong DataFrame
 for _, row in books_df.iterrows():
     title = row['Book Title']
     price = row['Price']
     image_filename = row['Image Path']  # Tên file ảnh từ CSV
 
     # Đảm bảo rằng đường dẫn đúng đến thư mục static/images
-    image_path = os.path.join('static', image_filename)
+    image_path = os.path.join(image_dir, image_filename)
 
     # Kiểm tra nếu tệp hình ảnh tồn tại
     if not os.path.exists(image_path):
