@@ -76,13 +76,11 @@ def extract_text_from_image(image_path):
 def create_text_embedding(title):
     return vectorizer.transform([title]).toarray()[0]
 
-# Tạo embedding cho ảnh
+# Tạo embedding cho ảnh chỉ với một đầu vào
 def create_image_embedding(image_path):
     image_tensor = preprocess_image(image_path)
     with torch.no_grad():
-        features = model(image_tensor)
-    
-    img_embedding = features.view(features.size(0), -1)  # Đảm bảo kích thước đúng
+        img_embedding, _ = model.forward_once(model.img_transform(image_tensor.view(image_tensor.size(0), -1)))
     return img_embedding.numpy()
 
 @app.route('/')
@@ -133,7 +131,6 @@ def search_books():
                 "similarity": similarity
             })
 
-    # Sắp xếp theo độ tương đồng
     results = sorted(results, key=lambda x: x['similarity'], reverse=True)[:5]
 
     return jsonify(results)
