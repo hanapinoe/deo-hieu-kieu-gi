@@ -38,11 +38,19 @@ for _, row in data.iterrows():
 # Hàm tạo embedding văn bản
 def create_text_embeddings(data):
     df = pd.DataFrame(data)
-    try:
-        df['price'] = df['price'].str.replace(r'[₫.,]', '', regex=True).astype(float)
-    except Exception as e:
-        print(f"Error processing price column: {e}")
-        df['price'] = 0.0  # Giá trị mặc định nếu không xử lý được
+
+    # Kiểm tra và xử lý giá trị thiếu trong cột `price`
+    if 'price' in df.columns:
+        try:
+            df['price'] = df['price'].str.replace(r'[₫.,]', '', regex=True).astype(float)
+        except Exception as e:
+            print(f"Error processing price column: {e}")
+            df['price'] = 0.0  # Giá trị mặc định nếu không xử lý được
+
+        # Thay thế các giá trị thiếu bằng giá trị trung bình của cột `price`
+        df['price'].fillna(df['price'].mean(), inplace=True)
+    else:
+        df['price'] = 0.0  # Thêm cột `price` với giá trị mặc định nếu không tồn tại
 
     # Chuẩn hóa giá
     scaler = StandardScaler()
