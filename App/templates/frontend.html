@@ -13,7 +13,7 @@
             margin-top: 20px;
         }
         .result-img {
-            width: 100px;  /* Kích thước hình ảnh hiển thị */
+            width: 100px;
             height: auto;
         }
     </style>
@@ -46,17 +46,9 @@
             const imageFile = document.getElementById("image").files[0];
 
             let formData = new FormData();
+            if (title) formData.append("title", title);
+            if (imageFile) formData.append("image", imageFile);
 
-            // Kiểm tra nếu có tiêu đề hoặc hình ảnh
-            if (title) {
-                formData.append("title", title);
-            }
-
-            if (imageFile) {
-                formData.append("image", imageFile);
-            }
-
-            // Kiểm tra nếu không có tiêu đề và không có ảnh
             if (!title && !imageFile) {
                 alert("Vui lòng cung cấp ít nhất một tiêu đề hoặc hình ảnh.");
                 return;
@@ -67,16 +59,22 @@
                     method: "POST",
                     body: formData,
                 });
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(error.error || "Lỗi không xác định từ server.");
+                    return;
+                }
                 const data = await response.json();
                 displayResults(data);
             } catch (error) {
+                alert("Lỗi kết nối đến server.");
                 console.error("Error:", error);
             }
         });
 
         function displayResults(results) {
             const resultsList = document.getElementById("results-list");
-            resultsList.innerHTML = ""; // Clear previous results
+            resultsList.innerHTML = ""; 
 
             if (results.length === 0) {
                 resultsList.innerHTML = "<li class='list-group-item'>No matches found.</li>";
@@ -98,4 +96,3 @@
     </script>
 </body>
 </html>
-    

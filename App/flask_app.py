@@ -8,16 +8,15 @@ from sklearn.metrics.pairwise import cosine_similarity
 from pymongo import MongoClient
 import os
 import joblib
-import pytesseract  # Thư viện OCR
+import pytesseract
 from flask_cors import CORS
-import base64
 
 # Đặt đường dẫn đến tesseract
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 # Khởi tạo Flask app
 app = Flask(__name__)
-CORS(app)  # Cho phép CORS
+CORS(app)
 
 # Kết nối với MongoDB
 client = MongoClient('mongodb://localhost:27017/')
@@ -60,7 +59,7 @@ vectorizer = joblib.load('vectorizer.pkl')
 
 # Tiền xử lý ảnh
 def preprocess_image(image_path):
-    transform = transforms.Compose([ 
+    transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -71,39 +70,28 @@ def preprocess_image(image_path):
 # Trích xuất văn bản từ ảnh bằng OCR
 def extract_text_from_image(image_path):
     image = Image.open(image_path)
-    extracted_text = pytesseract.image_to_string(image)
-    return extracted_text.strip()
+    return pytesseract.image_to_string(image).strip()
 
 # Tạo embedding cho văn bản
 def create_text_embedding(title):
     text_embedding = vectorizer.transform([title]).toarray()
     text_embedding = torch.tensor(text_embedding, dtype=torch.float)
     text_embedding = model.text_transform(text_embedding)
-    text_embedding = model.forward_once(text_embedding)
-    return text_embedding.detach().numpy().reshape(1, -1)
+    return model.forward_once(text_embedding).detach().numpy().reshape(1, -1)
 
-# Tạo embedding cho ảnh chỉ với một đầu vào
+# Tạo embedding cho ảnh
 def create_image_embedding(image_path):
     resnet_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-    resnet_model = torch.nn.Sequential(*list(resnet_model.children())[:-1]) 
+    resnet_model = torch.nn.Sequential(*list(resnet_model.children())[:-1])
     resnet_model.eval()
-    
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-    image = Image.open(image_path).convert('RGB')
-    image_tensor = transform(image).unsqueeze(0)
-    
+
+    image_tensor = preprocess_image(image_path)
     with torch.no_grad():
         features = resnet_model(image_tensor)
     
     img_embedding = features.view(features.size(0), -1)
     img_embedding = model.img_transform(img_embedding)
-    img_embedding = model.forward_once(img_embedding)
-    
-    return img_embedding.detach().numpy().reshape(1, -1)
+    return model.forward_once(img_embedding).detach().numpy().reshape(1, -1)
 
 @app.route('/')
 def index():
@@ -112,82 +100,57 @@ def index():
 @app.route('/search', methods=['POST'])
 def search_books():
     try:
-        # Tạo thư mục tạm nếu chưa tồn tại
         if not os.path.exists('temp'):
             os.makedirs('temp')
 
         image = request.files.get('image')
         title = request.form.get('title')
 
-        # Kiểm tra nếu không có tiêu đề và không có ảnh
         if not image and not title:
             return jsonify({"error": "Vui lòng cung cấp ít nhất một tiêu đề hoặc hình ảnh."}), 400
 
         input_embedding = None
-
-        # Xử lý hình ảnh nếu có
         if image:
             image_path = f"temp/{image.filename}"
             image.save(image_path)
-
             try:
                 extracted_text = extract_text_from_image(image_path)
-                if extracted_text.strip():
+                if extracted_text:
                     input_embedding = create_text_embedding(extracted_text)
                 else:
                     input_embedding = create_image_embedding(image_path)
             except Exception as e:
                 return jsonify({"error": f"Lỗi xử lý ảnh: {str(e)}"}), 500
-
-        # Xử lý tiêu đề nếu có
         elif title:
             try:
                 input_embedding = create_text_embedding(title)
             except Exception as e:
                 return jsonify({"error": f"Lỗi xử lý tiêu đề: {str(e)}"}), 500
 
-        # Kiểm tra embedding đầu vào
-        if input_embedding is None or input_embedding.shape[1] not in [101, 2048]:
-            return jsonify({"error": "Embedding không hợp lệ."}), 400
+        if input_embedding is None or input_embedding.size == 0:
+            return jsonify({"error": "Embedding không hợp lệ hoặc rỗng."}), 400
 
-        # Lấy tất cả sách từ MongoDB
         books = list(book_collection.find())
         results = []
-
         for book in books:
-            # Lấy embedding từ MongoDB
             stored_embedding = book.get('image_embedding' if image else 'text_embedding')
-            if not stored_embedding:
-                continue
-
-            embedding = np.array(stored_embedding).reshape(1, -1)
-
-            # Kiểm tra kích thước embedding
-            if embedding.shape[1] != input_embedding.shape[1]:
-                continue
-
-            # Tính cosine similarity
-            try:
+            if stored_embedding:
+                embedding = np.array(stored_embedding).reshape(1, -1)
+                if embedding.shape != input_embedding.shape:
+                    continue
                 similarity = cosine_similarity(input_embedding, embedding)[0][0]
-            except Exception as e:
-                print(f"Error calculating similarity: {str(e)}")
-                continue
+                results.append({
+                    "title": book["title"],
+                    "price": float(book["price"]),
+                    "image_url": book["image_url"],
+                    "similarity": float(similarity)
+                })
 
-            # Thêm sách vào kết quả
-            results.append({
-                "title": book["title"],
-                "price": float(book["price"]),
-                "image_url": book["image_url"],
-                "similarity": float(similarity)
-            })
-
-        # Sắp xếp kết quả và trả về
         results = sorted(results, key=lambda x: x['similarity'], reverse=True)[:5]
         return jsonify(results)
 
     except Exception as e:
         return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
-
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
