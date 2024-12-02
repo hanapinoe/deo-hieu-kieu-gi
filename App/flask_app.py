@@ -10,6 +10,7 @@ import os
 import joblib
 import pytesseract  # Thư viện OCR
 from flask_cors import CORS
+import base64
 
 # Đặt đường dẫn đến tesseract
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
