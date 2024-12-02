@@ -12,6 +12,10 @@
         #results {
             margin-top: 20px;
         }
+        .result-img {
+            width: 100px;  /* Kích thước hình ảnh hiển thị */
+            height: auto;
+        }
     </style>
 </head>
 <body>
@@ -82,7 +86,12 @@
             results.forEach((result) => {
                 const listItem = document.createElement("li");
                 listItem.classList.add("list-group-item");
-                listItem.innerHTML = `<strong>${result.title}</strong> <br> Similarity: ${result.similarity.toFixed(2)} <br> Metadata: ${JSON.stringify(result.metadata)}`;
+                listItem.innerHTML = `
+                    <strong>${result.title}</strong> <br>
+                    Price: ${result.price} <br>
+                    Similarity: ${result.similarity.toFixed(2)} <br>
+                    <img src="${result.image_url}" class="result-img" alt="${result.title}">
+                `;
                 resultsList.appendChild(listItem);
             });
         }
