@@ -50,7 +50,7 @@ class SiameseNetwork(torch.nn.Module):
 
 # Tải mô hình và vectorizer
 img_embedding_dim = 2048
-text_embedding_dim = 101
+text_embedding_dim = 100
 model = SiameseNetwork(img_embedding_dim, text_embedding_dim, output_dim=128)
 model.load_state_dict(torch.load('siamese_model.pth'))
 model.eval()
@@ -74,10 +74,11 @@ def extract_text_from_image(image_path):
 
 # Tạo embedding cho văn bản
 def create_text_embedding(title):
-    text_embedding = vectorizer.transform([title]).toarray()
+    text_embedding = vectorizer.transform([title]).toarray()  # Đầu ra có kích thước (1, 100)
     text_embedding = torch.tensor(text_embedding, dtype=torch.float)
-    text_embedding = model.text_transform(text_embedding)
+    text_embedding = model.text_transform(text_embedding)  # Không lỗi nếu kích thước là 100
     return model.forward_once(text_embedding).detach().numpy().reshape(1, -1)
+
 
 # Tạo embedding cho ảnh
 def create_image_embedding(image_path):
