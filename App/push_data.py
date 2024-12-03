@@ -43,23 +43,21 @@ for _, row in metadata.iterrows():
         
         # Kiểm tra kích thước text_embedding
         if len(text_embedding) != 101:  # Mô hình yêu cầu text_embedding kích thước 101
-            print(f"Skipping title '{row['title']}' due to incorrect text_embedding size: {len(text_embedding)}")
+            print(f"Incorrect text_embedding size for title '{row['title']}': {len(text_embedding)}")
             # Cố gắng padding hoặc cắt bỏ nếu text_embedding có kích thước không đúng
             if len(text_embedding) < 101:
                 text_embedding = text_embedding + [0] * (101 - len(text_embedding))  # Padding bằng 0
             elif len(text_embedding) > 101:
                 text_embedding = text_embedding[:101]  # Cắt bớt nếu quá dài
-            else:
-                continue
         
         # Kiểm tra kích thước image_embedding
         if len(image_embedding) != 2048:  # ResNet50 yêu cầu image_embedding kích thước 2048
-            print(f"Skipping title '{row['title']}' due to incorrect image_embedding size: {len(image_embedding)}")
+            print(f"Incorrect image_embedding size for title '{row['title']}': {len(image_embedding)}")
             # Nếu cần, có thể làm tương tự như với text_embedding: padding hoặc cắt
             if len(image_embedding) < 2048:
-                image_embedding = image_embedding + [0] * (2048 - len(image_embedding))  # Padding
+                image_embedding = image_embedding + [0] * (2048 - len(image_embedding))  # Padding bằng 0
             elif len(image_embedding) > 2048:
-                image_embedding = image_embedding[:2048]  # Cắt bớt
+                image_embedding = image_embedding[:2048]  # Cắt bớt nếu quá dài
 
         # Đảm bảo thư mục tồn tại trước khi lưu ảnh
         image_dir = './static/images'
