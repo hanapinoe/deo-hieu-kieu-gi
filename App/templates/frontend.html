@@ -12,9 +12,16 @@
         #results {
             margin-top: 20px;
         }
-        .result-img {
+        .book-result {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+        }
+        .book-result img {
             width: 100px;
             height: auto;
+            margin-top: 10px;
         }
     </style>
 </head>
@@ -35,8 +42,7 @@
             </form>
         </div>
         <div id="results" class="mt-4">
-            <h3>Results</h3>
-            <ul id="results-list" class="list-group"></ul>
+            <!-- Kết quả sẽ được hiển thị tại đây -->
         </div>
     </div>
 
@@ -59,40 +65,43 @@
                     method: "POST",
                     body: formData,
                 });
+
                 if (!response.ok) {
                     const error = await response.json();
                     alert(error.error || "Lỗi không xác định từ server.");
                     return;
                 }
+
                 const data = await response.json();
-                displayResults(data);
+
+                // Hiển thị kết quả lên giao diện
+                const resultsContainer = document.getElementById('results');
+                resultsContainer.innerHTML = ''; // Clear previous results
+
+                data.forEach(book => {
+                    const bookDiv = document.createElement('div');
+                    bookDiv.className = 'book-result';
+
+                    const title = document.createElement('h3');
+                    title.textContent = book.title;
+
+                    const price = document.createElement('p');
+                    price.textContent = `Giá: ${book.price}`;
+
+                    const image = document.createElement('img');
+                    image.src = `data:image/jpeg;base64,${book.encoded_image}`;  // Hiển thị ảnh từ base64
+
+                    bookDiv.appendChild(title);
+                    bookDiv.appendChild(price);
+                    bookDiv.appendChild(image);
+
+                    resultsContainer.appendChild(bookDiv);
+                });
             } catch (error) {
                 alert("Lỗi kết nối đến server.");
                 console.error("Error:", error);
             }
         });
-
-        function displayResults(results) {
-            const resultsList = document.getElementById("results-list");
-            resultsList.innerHTML = ""; 
-
-            if (results.length === 0) {
-                resultsList.innerHTML = "<li class='list-group-item'>No matches found.</li>";
-                return;
-            }
-
-            results.forEach((result) => {
-                const listItem = document.createElement("li");
-                listItem.classList.add("list-group-item");
-                listItem.innerHTML = `
-                    <strong>${result.title}</strong> <br>
-                    Price: ${result.price} <br>
-                    Similarity: ${result.similarity.toFixed(2)} <br>
-                    <img src="${result.image_url}" class="result-img" alt="${result.title}">
-                `;
-                resultsList.appendChild(listItem);
-            });
-        }
     </script>
 </body>
 </html>

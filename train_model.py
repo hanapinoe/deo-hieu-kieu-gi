@@ -6,31 +6,53 @@ from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_sc
 
 # Dataset cho Contrastive Learning
 class ContrastiveDataset(Dataset):
-    def __init__(self, pairs, labels):
+    def __init__(self, pairs, labels, augment=False):
         self.pairs = pairs
         self.labels = labels
+        self.augment = augment
 
     def __len__(self):
         return len(self.labels)
 
+    def augment_embedding(self, embedding):
+        noise = np.random.normal(0, 0.01, embedding.shape)
+        return embedding + noise
+
     def __getitem__(self, idx):
         img_emb, text_emb = self.pairs[idx]
         label = self.labels[idx]
+        
+        if self.augment:
+            img_emb = self.augment_embedding(img_emb)
+            text_emb = self.augment_embedding(text_emb)
+        
         return (
             torch.tensor(img_emb, dtype=torch.float32),
             torch.tensor(text_emb, dtype=torch.float32),
             torch.tensor(label, dtype=torch.float32),
         )
 
+
 # Mô hình Siamese Network
 class SiameseNetwork(nn.Module):
     def __init__(self, img_embedding_dim, text_embedding_dim, output_dim=128):
         super(SiameseNetwork, self).__init__()
-        self.img_transform = nn.Linear(img_embedding_dim, output_dim)
-        self.text_transform = nn.Linear(text_embedding_dim, output_dim)
+        self.img_transform = nn.Sequential(
+            nn.Linear(img_embedding_dim, output_dim),
+            nn.BatchNorm1d(output_dim),
+            nn.ReLU(),
+            nn.Dropout(0.3)
+        )
+        self.text_transform = nn.Sequential(
+            nn.Linear(text_embedding_dim, output_dim),
+            nn.BatchNorm1d(output_dim),
+            nn.ReLU(),
+            nn.Dropout(0.3)
+        )
         self.shared_net = nn.Sequential(
             nn.Linear(output_dim, 128),
             nn.ReLU(),
+            nn.Dropout(0.3),
             nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, 32),
@@ -47,17 +69,19 @@ class SiameseNetwork(nn.Module):
         output2 = self.forward_once(text_embedding)
         return output1, output2
 
+
 # Loss function
-class ContrastiveLoss(nn.Module):
+class TripletLoss(nn.Module):
     def __init__(self, margin=1.0):
-        super(ContrastiveLoss, self).__init__()
+        super(TripletLoss, self).__init__()
         self.margin = margin
 
-    def forward(self, output1, output2, label):
-        euclidean_distance = nn.functional.pairwise_distance(output1, output2)
-        loss = (1 - label) * torch.pow(euclidean_distance, 2) + \
-               label * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
+    def forward(self, anchor, positive, negative):
+        pos_distance = nn.functional.pairwise_distance(anchor, positive)
+        neg_distance = nn.functional.pairwise_distance(anchor, negative)
+        loss = torch.clamp(pos_distance - neg_distance + self.margin, min=0.0)
         return loss.mean()
+
 
 # Load dữ liệu
 train_pairs = np.load('train_pairs.npy', allow_pickle=True)

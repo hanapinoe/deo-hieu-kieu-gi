@@ -63,26 +63,45 @@ for _, row in metadata.iterrows():
                 image_embedding = image_embedding[:2048]  # Cắt bớt
 
         # Lưu hình ảnh encode_img
-        image_path = row['image_url']
-        encode_img = embedding_row.get('encode_img', None)  # Lấy encode_img từ embedding
-        if encode_img:
-            try:
-                # Decode và lưu ảnh vào thư mục ./static/images
-                with open(image_path, "wb") as image_file:
-                    image_file.write(base64.b64decode(encode_img))
-            except Exception as e:
-                print(f"Failed to save image for title '{row['title']}': {e}")
-                continue
+import os
+import base64
+
+# Đảm bảo thư mục tồn tại trước khi lưu ảnh
+image_dir = './static/images'
+if not os.path.exists(image_dir):
+    os.makedirs(image_dir)
+
+# Lưu hình ảnh encode_img (base64 -> ảnh thực)
+image_path = row['image_url']  # Lấy image_url từ row
+encode_img = embedding_row.get('encode_img', None)  # Lấy encode_img từ embedding
+
+if encode_img:
+    try:
+        # Xử lý lưu ảnh từ base64
+        image_filename = os.path.basename(image_path)  # Lấy tên ảnh từ đường dẫn
+        saved_image_path = os.path.join(image_dir, image_filename)
+        
+        # Decode base64 và lưu vào file
+        with open(saved_image_path, "wb") as image_file:
+            image_file.write(base64.b64decode(encode_img))
+        
+        # Mã hóa ảnh vừa lưu lại thành base64 để lưu vào MongoDB
+        with open(saved_image_path, "rb") as image_file:
+            encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
 
         # Tạo document hợp lệ để chèn vào MongoDB
         document = {
             "title": row['title'],
             "price": row['price'],
-            "image_url": image_path,
             "text_embedding": text_embedding,
-            "image_embedding": image_embedding
+            "image_embedding": image_embedding,
+            "encoded_image": encoded_image  # Lưu ảnh dưới dạng base64
         }
         valid_data_to_insert.append(document)
+
+    except Exception as e:
+        print(f"Failed to save or encode image for title '{row['title']}': {e}")
+
 
 # Chèn dữ liệu hợp lệ vào MongoDB
 if valid_data_to_insert:
