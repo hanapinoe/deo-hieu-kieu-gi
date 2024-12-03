@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from torchvision.models import resnet50, ResNet50_Weights
 
 # Đọc dữ liệu từ file CSV
-data = pd.read_csv('books_data.csv')
+data = pd.read_csv('./books_data.csv')
 dataset = []
 
 # Duyệt qua từng hàng trong DataFrame
