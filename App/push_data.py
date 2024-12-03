@@ -2,6 +2,7 @@ import pandas as pd
 from pymongo import MongoClient
 import ast
 import os
+import base64
 
 # Kết nối tới MongoDB
 client = MongoClient('mongodb://localhost:27017/')  # Thay URL nếu cần
@@ -25,8 +26,11 @@ embeddings['text_embedding'] = embeddings['text_embedding'].apply(lambda x: ast.
 embeddings['image_embedding'] = embeddings['image_embedding'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
 
 # Tạo đường dẫn ảnh (nếu cần thay đổi đường dẫn gốc, sửa tại đây)
+output_image_dir = './static/images'
+os.makedirs(output_image_dir, exist_ok=True)
+
 metadata['image_url'] = metadata['title'].apply(
-    lambda x: os.path.join('./static/images', x.replace(' ', '_').lower() + '.jpg')
+    lambda x: os.path.join(output_image_dir, x.replace(' ', '_').lower() + '.jpg')
 )
 
 # Kiểm tra và sửa kích thước embedding
@@ -43,7 +47,6 @@ for _, row in metadata.iterrows():
         # Kiểm tra kích thước text_embedding
         if len(text_embedding) != 101:  # Mô hình yêu cầu text_embedding kích thước 101
             print(f"Skipping title '{row['title']}' due to incorrect text_embedding size: {len(text_embedding)}")
-            # Cố gắng padding hoặc cắt bỏ nếu text_embedding có kích thước không đúng
             if len(text_embedding) < 101:
                 text_embedding = text_embedding + [0] * (101 - len(text_embedding))  # Padding bằng 0
             elif len(text_embedding) > 101:
@@ -54,17 +57,28 @@ for _, row in metadata.iterrows():
         # Kiểm tra kích thước image_embedding
         if len(image_embedding) != 2048:  # ResNet50 yêu cầu image_embedding kích thước 2048
             print(f"Skipping title '{row['title']}' due to incorrect image_embedding size: {len(image_embedding)}")
-            # Nếu cần, có thể làm tương tự như với text_embedding: padding hoặc cắt
             if len(image_embedding) < 2048:
                 image_embedding = image_embedding + [0] * (2048 - len(image_embedding))  # Padding
             elif len(image_embedding) > 2048:
                 image_embedding = image_embedding[:2048]  # Cắt bớt
 
+        # Lưu hình ảnh encode_img
+        image_path = row['image_url']
+        encode_img = embedding_row.get('encode_img', None)  # Lấy encode_img từ embedding
+        if encode_img:
+            try:
+                # Decode và lưu ảnh vào thư mục ./static/images
+                with open(image_path, "wb") as image_file:
+                    image_file.write(base64.b64decode(encode_img))
+            except Exception as e:
+                print(f"Failed to save image for title '{row['title']}': {e}")
+                continue
+
         # Tạo document hợp lệ để chèn vào MongoDB
         document = {
             "title": row['title'],
             "price": row['price'],
-            "image_url": row['image_url'],
+            "image_url": image_path,
             "text_embedding": text_embedding,
             "image_embedding": image_embedding
         }
