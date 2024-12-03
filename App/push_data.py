@@ -59,6 +59,9 @@ for _, row in metadata.iterrows():
             elif len(image_embedding) > 2048:
                 image_embedding = image_embedding[:2048]  # Cắt bớt nếu quá dài
 
+        # Tạo combine_embedding
+        combine_embedding = text_embedding + image_embedding
+
         # Đảm bảo thư mục tồn tại trước khi lưu ảnh
         image_dir = './static/images'
         if not os.path.exists(image_dir):
@@ -88,6 +91,7 @@ for _, row in metadata.iterrows():
                     "price": row['price'],
                     "text_embedding": text_embedding,
                     "image_embedding": image_embedding,
+                    "combine_embedding": combine_embedding,
                     "encoded_image": encoded_image  # Lưu ảnh dưới dạng base64
                 }
                 valid_data_to_insert.append(document)

@@ -7,7 +7,6 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import StandardScaler
 from torchvision.models import resnet50, ResNet50_Weights
-import random
 
 # Đọc dữ liệu từ file CSV
 data = pd.read_csv('books_data.csv')
@@ -86,15 +85,17 @@ else:
     text_embeddings = scaler.fit_transform(text_embeddings)
     image_embeddings = scaler.fit_transform(image_embeddings)
 
-    # Ghép thông tin embedding
+    # Ghép thông tin embedding và tạo `combine_embedding`
     valid_dataset = []
     for idx, d in enumerate(dataset):
         if idx < len(text_embeddings) and idx < len(image_embeddings):
+            combined_embedding = np.concatenate((text_embeddings[idx], image_embeddings[idx]))
             valid_dataset.append({
                 'title': d['title'],
                 'price': d['price'],
                 'text_embedding': text_embeddings[idx].tolist(),  # Convert to list for MongoDB
-                'image_embedding': image_embeddings[idx].tolist()  # Convert to list for MongoDB
+                'image_embedding': image_embeddings[idx].tolist(),  # Convert to list for MongoDB
+                'combine_embedding': combined_embedding.tolist()  # Convert to list for MongoDB
             })
 
     # Lưu embeddings vào file mới để đẩy lên MongoDB
