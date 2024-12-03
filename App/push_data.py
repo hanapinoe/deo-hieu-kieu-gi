@@ -45,63 +45,54 @@ for _, row in metadata.iterrows():
         image_embedding = embedding_row['image_embedding']
         
         # Kiểm tra kích thước text_embedding
-        if len(text_embedding) != 101:  # Mô hình yêu cầu text_embedding kích thước 101
-            print(f"Skipping title '{row['title']}' due to incorrect text_embedding size: {len(text_embedding)}")
+        if len(text_embedding) != 101:
             if len(text_embedding) < 101:
                 text_embedding = text_embedding + [0] * (101 - len(text_embedding))  # Padding bằng 0
-            elif len(text_embedding) > 101:
-                text_embedding = text_embedding[:101]  # Cắt bớt nếu quá dài
             else:
-                continue
+                text_embedding = text_embedding[:101]  # Cắt bớt nếu quá dài
         
         # Kiểm tra kích thước image_embedding
-        if len(image_embedding) != 2048:  # ResNet50 yêu cầu image_embedding kích thước 2048
-            print(f"Skipping title '{row['title']}' due to incorrect image_embedding size: {len(image_embedding)}")
+        if len(image_embedding) != 2048:
             if len(image_embedding) < 2048:
-                image_embedding = image_embedding + [0] * (2048 - len(image_embedding))  # Padding
-            elif len(image_embedding) > 2048:
-                image_embedding = image_embedding[:2048]  # Cắt bớt
+                image_embedding = image_embedding + [0] * (2048 - len(image_embedding))  # Padding bằng 0
+            else:
+                image_embedding = image_embedding[:2048]  # Cắt bớt nếu quá dài
 
-        # Lưu hình ảnh encode_img
-import os
-import base64
+        # Đảm bảo thư mục tồn tại trước khi lưu ảnh
+        image_dir = './static/images'
+        if not os.path.exists(image_dir):
+            os.makedirs(image_dir)
 
-# Đảm bảo thư mục tồn tại trước khi lưu ảnh
-image_dir = './static/images'
-if not os.path.exists(image_dir):
-    os.makedirs(image_dir)
+        # Lưu hình ảnh encode_img (base64 -> ảnh thực)
+        image_path = row['image_url']  # Lấy image_url từ row
+        encode_img = embedding_row.get('encode_img', None)  # Lấy encode_img từ embedding
 
-# Lưu hình ảnh encode_img (base64 -> ảnh thực)
-image_path = row['image_url']  # Lấy image_url từ row
-encode_img = embedding_row.get('encode_img', None)  # Lấy encode_img từ embedding
+        if encode_img:
+            try:
+                # Xử lý lưu ảnh từ base64
+                image_filename = os.path.basename(image_path)  # Lấy tên ảnh từ đường dẫn
+                saved_image_path = os.path.join(image_dir, image_filename)
+                
+                # Decode base64 và lưu vào file
+                with open(saved_image_path, "wb") as image_file:
+                    image_file.write(base64.b64decode(encode_img))
+                
+                # Mã hóa ảnh vừa lưu lại thành base64 để lưu vào MongoDB
+                with open(saved_image_path, "rb") as image_file:
+                    encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
 
-if encode_img:
-    try:
-        # Xử lý lưu ảnh từ base64
-        image_filename = os.path.basename(image_path)  # Lấy tên ảnh từ đường dẫn
-        saved_image_path = os.path.join(image_dir, image_filename)
-        
-        # Decode base64 và lưu vào file
-        with open(saved_image_path, "wb") as image_file:
-            image_file.write(base64.b64decode(encode_img))
-        
-        # Mã hóa ảnh vừa lưu lại thành base64 để lưu vào MongoDB
-        with open(saved_image_path, "rb") as image_file:
-            encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
+                # Tạo document hợp lệ để chèn vào MongoDB
+                document = {
+                    "title": row['title'],
+                    "price": row['price'],
+                    "text_embedding": text_embedding,
+                    "image_embedding": image_embedding,
+                    "encoded_image": encoded_image  # Lưu ảnh dưới dạng base64
+                }
+                valid_data_to_insert.append(document)
 
-        # Tạo document hợp lệ để chèn vào MongoDB
-        document = {
-            "title": row['title'],
-            "price": row['price'],
-            "text_embedding": text_embedding,
-            "image_embedding": image_embedding,
-            "encoded_image": encoded_image  # Lưu ảnh dưới dạng base64
-        }
-        valid_data_to_insert.append(document)
-
-    except Exception as e:
-        print(f"Failed to save or encode image for title '{row['title']}': {e}")
-
+            except Exception as e:
+                print(f"Failed to save or encode image for title '{row['title']}': {e}")
 
 # Chèn dữ liệu hợp lệ vào MongoDB
 if valid_data_to_insert:
