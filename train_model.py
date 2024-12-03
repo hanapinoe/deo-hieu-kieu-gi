@@ -71,15 +71,15 @@ class SiameseNetwork(nn.Module):
 
 
 # Loss function
-class TripletLoss(nn.Module):
+class ContrastiveLoss(nn.Module):
     def __init__(self, margin=1.0):
-        super(TripletLoss, self).__init__()
+        super(ContrastiveLoss, self).__init__()
         self.margin = margin
 
-    def forward(self, anchor, positive, negative):
-        pos_distance = nn.functional.pairwise_distance(anchor, positive)
-        neg_distance = nn.functional.pairwise_distance(anchor, negative)
-        loss = torch.clamp(pos_distance - neg_distance + self.margin, min=0.0)
+    def forward(self, output1, output2, label):
+        euclidean_distance = nn.functional.pairwise_distance(output1, output2)
+        loss = (1 - label) * torch.pow(euclidean_distance, 2) + \
+               label * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
         return loss.mean()
 
 
@@ -100,7 +100,7 @@ img_embedding_dim = 2048
 text_embedding_dim = train_pairs[0][1].shape[0]
 model = SiameseNetwork(img_embedding_dim, text_embedding_dim, output_dim=128)
 
-criterion = TripletLoss(margin=1.0)
+criterion = ContrastiveLoss(margin=1.0)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 # Huấn luyện
