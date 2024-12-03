@@ -100,7 +100,7 @@ img_embedding_dim = 2048
 text_embedding_dim = train_pairs[0][1].shape[0]
 model = SiameseNetwork(img_embedding_dim, text_embedding_dim, output_dim=128)
 
-criterion = ContrastiveLoss(margin=1.0)
+criterion = TripletLoss(margin=1.0)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 # Huấn luyện
