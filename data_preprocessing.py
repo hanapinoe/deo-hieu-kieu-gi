@@ -32,9 +32,9 @@ for _, row in data.iterrows():
         except IOError as e:
             print(f"Error opening image {full_image_path}: {e}")
 
-# Kiểm tra xem cột 'title' có tồn tại không
-if 'title' not in dataset[0].keys():
-    print("Column 'title' does not exist in dataset.")
+# Kiểm tra xem dataset có trống không
+if len(dataset) == 0:
+    print("Dataset is empty. Please check the data.")
 else:
     # Hàm tạo embedding văn bản chỉ cho tiêu đề
     def create_text_embeddings(data):
