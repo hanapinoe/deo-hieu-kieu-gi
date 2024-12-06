@@ -42,7 +42,7 @@
             </form>
         </div>
         <div id="results" class="mt-4">
-            <!-- Kết quả sẽ được hiển thị tại đây -->
+            <!-- Results will be shown here -->
         </div>
     </div>
 
@@ -55,6 +55,7 @@
             if (title) formData.append("title", title);
             if (imageFile) formData.append("image", imageFile);
 
+            // Check if at least one input is provided
             if (!title && !imageFile) {
                 alert("Vui lòng cung cấp ít nhất một tiêu đề hoặc hình ảnh.");
                 return;
@@ -74,27 +75,36 @@
 
                 const data = await response.json();
 
-                // Hiển thị kết quả lên giao diện
+                // Clear previous results
                 const resultsContainer = document.getElementById('results');
-                resultsContainer.innerHTML = ''; // Clear previous results
+                resultsContainer.innerHTML = ''; 
 
+                // Handle empty result case
+                if (data.length === 0) {
+                    resultsContainer.innerHTML = '<p>No books found matching your search criteria.</p>';
+                    return;
+                }
+
+                // Render search results
                 data.forEach(book => {
                     const bookDiv = document.createElement('div');
                     bookDiv.className = 'book-result';
 
-                    const title = document.createElement('h3');
-                    title.textContent = book.title;
+                    const titleElement = document.createElement('h3');
+                    titleElement.textContent = book.title;
 
-                    const price = document.createElement('p');
-                    price.textContent = `Giá: ${book.price}`;
+                    const priceElement = document.createElement('p');
+                    priceElement.textContent = `Price: ${book.price}`;
 
-                    const image = document.createElement('img');
-                    image.src = `data:image/jpeg;base64,${book.encoded_image}`;  // Hiển thị ảnh từ base64
+                    const imageElement = document.createElement('img');
+                    imageElement.src = `data:image/jpeg;base64,${book.encoded_image}`;
 
-                    bookDiv.appendChild(title);
-                    bookDiv.appendChild(price);
-                    bookDiv.appendChild(image);
+                    // Append elements to book div
+                    bookDiv.appendChild(titleElement);
+                    bookDiv.appendChild(priceElement);
+                    bookDiv.appendChild(imageElement);
 
+                    // Append book div to results container
                     resultsContainer.appendChild(bookDiv);
                 });
             } catch (error) {

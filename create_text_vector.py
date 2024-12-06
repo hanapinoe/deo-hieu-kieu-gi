@@ -3,9 +3,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import joblib
 import os
 
-def create_vectorizer(csv_file_path, output_file_path, max_features=100):
-    
-
+def create_vectorizer(csv_file_path, output_file_path, max_features=128):
     # Kiểm tra file CSV
     if not os.path.exists(csv_file_path):
         print(f"Không tìm thấy file CSV: {csv_file_path}")
@@ -26,7 +24,7 @@ def create_vectorizer(csv_file_path, output_file_path, max_features=100):
         print("Không có dữ liệu tiêu đề sách trong file CSV.")
         return
 
-    # Tạo TfidfVectorizer và huấn luyện
+    # Tạo TfidfVectorizer và huấn luyện với max_features=128
     vectorizer = TfidfVectorizer(max_features=max_features)
     vectorizer.fit(titles)
 
@@ -34,7 +32,3 @@ def create_vectorizer(csv_file_path, output_file_path, max_features=100):
     joblib.dump(vectorizer, output_file_path)
     print(f"Vectorizer đã được lưu thành công vào '{output_file_path}'")
 
-# Sử dụng hàm để tạo vectorizer
-csv_file = 'books_metadata.csv'  # Đảm bảo đường dẫn đúng tới file CSV
-output_file = 'vectorizer.pkl'  # Đảm bảo đường dẫn đúng để lưu file .pkl
-create_vectorizer(csv_file, output_file)

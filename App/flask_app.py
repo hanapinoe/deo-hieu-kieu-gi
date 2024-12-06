@@ -6,66 +6,70 @@ from PIL import Image
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from pymongo import MongoClient
-import os
+import tempfile
 import joblib
 import pytesseract
 from flask_cors import CORS
 
-# Đặt đường dẫn đến tesseract
+# Đặt đường dẫn đến Tesseract
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 # Khởi tạo Flask app
 app = Flask(__name__)
-CORS(app, resources={r"/search": {"origins": ["http://example.com"]}})  # Hạn chế domain được phép truy cập
+CORS(app)
 
 # Kết nối với MongoDB
 try:
     client = MongoClient('mongodb://localhost:27017/')
-    client.admin.command('ping')  # Kiểm tra kết nối
-    db = client['bookstore']
+    client.admin.command('ping')
+    db = client['book_search']
     book_collection = db['books']
 except Exception as e:
     print(f"Không thể kết nối với MongoDB: {str(e)}")
     exit(1)
 
-# Tải mô hình Siamese đã huấn luyện
-class SiameseNetwork(torch.nn.Module):
-    def __init__(self, img_embedding_dim, text_embedding_dim, output_dim=128):
-        super(SiameseNetwork, self).__init__()
-        self.img_transform = torch.nn.Linear(img_embedding_dim, output_dim)
-        self.text_transform = torch.nn.Linear(text_embedding_dim, output_dim)
-        self.shared_net = torch.nn.Sequential(
-            torch.nn.Linear(output_dim, 128),
-            torch.nn.ReLU(),
-            torch.nn.Linear(128, 64),
-            torch.nn.ReLU(),
-            torch.nn.Linear(64, 32),
-            torch.nn.ReLU()
-        )
-
-    def forward_once(self, x):
-        return self.shared_net(x)
-
-    def forward(self, img_input, text_input):
-        img_embedding = self.img_transform(img_input)
-        text_embedding = self.text_transform(text_input)
-        output1 = self.forward_once(img_embedding)
-        output2 = self.forward_once(text_embedding)
-        return output1, output2
-
-# Tải mô hình và vectorizer
-img_embedding_dim = 2048
-text_embedding_dim = 100
-model = SiameseNetwork(img_embedding_dim, text_embedding_dim, output_dim=128)
-model.load_state_dict(torch.load('siamese_model.pth'))
-model.eval()
-
+# Tải vectorizer
 vectorizer = joblib.load('vectorizer.pkl')
 
 # Tải ResNet-50
 resnet_model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
 resnet_model = torch.nn.Sequential(*list(resnet_model.children())[:-1])
 resnet_model.eval()
+
+
+def preprocess_title(title):
+    """
+    Chuẩn hóa tiêu đề người dùng nhập.
+    """
+    import re
+    # Chuyển về chữ thường
+    title = title.lower()
+    # Loại bỏ khoảng trắng thừa
+    title = title.strip()
+    # Loại bỏ dấu câu và ký tự đặc biệt (nếu cần)
+    title = re.sub(r'[^\w\s]', '', title)
+    return title
+
+def create_text_embedding(title):
+    """
+    Tạo embedding từ tiêu đề văn bản sau khi chuẩn hóa.
+    """
+    # Tiền xử lý tiêu đề
+    title = preprocess_title(title)
+
+    # Tạo embedding
+    text_embedding = vectorizer.transform([title]).toarray()
+    text_embedding = torch.tensor(text_embedding, dtype=torch.float)
+    transform_layer = torch.nn.Linear(text_embedding.size(1), 128)
+
+    with torch.no_grad():
+        text_embedding = transform_layer(text_embedding).detach().numpy()
+
+    # Kiểm tra NaN và xử lý
+    if np.isnan(text_embedding).any():
+        text_embedding = np.nan_to_num(text_embedding)
+
+    return text_embedding.reshape(1, -1)
 
 # Tiền xử lý ảnh
 def preprocess_image(image_path):
@@ -77,26 +81,18 @@ def preprocess_image(image_path):
     image = Image.open(image_path).convert('RGB')
     return transform(image).unsqueeze(0)
 
-# Trích xuất văn bản từ ảnh bằng OCR
-def extract_text_from_image(image_path):
-    image = Image.open(image_path)
-    return pytesseract.image_to_string(image).strip()
-
-# Tạo embedding cho văn bản
-def create_text_embedding(title):
-    text_embedding = vectorizer.transform([title]).toarray()
-    text_embedding = torch.tensor(text_embedding, dtype=torch.float)
-    text_embedding = model.text_transform(text_embedding)
-    return model.forward_once(text_embedding).detach().numpy().reshape(1, -1)
-
-# Tạo embedding cho ảnh
+# Trích xuất embedding ảnh
 def create_image_embedding(image_path):
     image_tensor = preprocess_image(image_path)
     with torch.no_grad():
         features = resnet_model(image_tensor)
-    img_embedding = features.view(features.size(0), -1)
-    img_embedding = model.img_transform(img_embedding)
-    return model.forward_once(img_embedding).detach().numpy().reshape(1, -1)
+    img_embedding = features.view(features.size(0), -1).cpu().numpy()
+
+    # Kiểm tra NaN và xử lý
+    if np.isnan(img_embedding).any():
+        img_embedding = np.nan_to_num(img_embedding)
+
+    return img_embedding.reshape(1, -1)
 
 @app.route('/')
 def index():
@@ -105,51 +101,71 @@ def index():
 @app.route('/search', methods=['POST'])
 def search_books():
     try:
-        input_embedding = None
+        # Kiểm tra xem người dùng nhập hình ảnh hay tiêu đề
         image = request.files.get('image')
         title = request.form.get('title')
 
         if not image and not title:
-            return jsonify({"error": "Vui lòng cung cấp ít nhất một tiêu đề hoặc hình ảnh."}), 400
+            return jsonify({"error": "Vui lòng cung cấp hình ảnh hoặc tiêu đề."}), 400
 
         if image:
-            image_path = f"temp/{image.filename}"
-            image.save(image_path)
-            try:
-                input_embedding = create_image_embedding(image_path)
-            except Exception as e:
-                return jsonify({"error": f"Lỗi xử lý ảnh: {str(e)}"}), 500
-            finally:
-                os.remove(image_path)
+            # Xử lý hình ảnh
+            with tempfile.NamedTemporaryFile(delete=False) as temp_image:
+                image.save(temp_image.name)
+
+                # OCR để lấy văn bản từ hình ảnh
+                ocr_text = pytesseract.image_to_string(temp_image.name, lang='eng').strip()
+
+                # Trích xuất embedding ảnh và văn bản
+                img_embedding = create_image_embedding(temp_image.name)
+                text_embedding = create_text_embedding(ocr_text)
+
         elif title:
-            try:
-                input_embedding = create_text_embedding(title)
-            except Exception as e:
-                return jsonify({"error": f"Lỗi xử lý tiêu đề: {str(e)}"}), 500
+            # Trích xuất embedding từ tiêu đề
+            text_embedding = create_text_embedding(title)
 
-        if input_embedding is None or input_embedding.size == 0:
-            return jsonify({"error": "Embedding không hợp lệ hoặc rỗng."}), 400
-
-        # Tìm các vector tương đồng nhất trong database
+        # Tìm kiếm trong cơ sở dữ liệu
         books = list(book_collection.find())
+        if not books:
+            return jsonify({"error": "Không tìm thấy sách trong cơ sở dữ liệu."}), 404
+
         results = []
         for book in books:
-            stored_embedding = np.array(book['image_embedding'] if image else book['text_embedding']).reshape(1, -1)
-            similarity = cosine_similarity(input_embedding, stored_embedding)[0][0]
+            stored_img_embedding = np.array(book['image_embedding']).reshape(1, -1)
+            stored_text_embedding = np.array(book['text_embedding']).reshape(1, -1)
+
+            # Kiểm tra NaN và xử lý
+            if np.isnan(stored_img_embedding).any():
+                stored_img_embedding = np.nan_to_num(stored_img_embedding)
+            if np.isnan(stored_text_embedding).any():
+                stored_text_embedding = np.nan_to_num(stored_text_embedding)
+
+            # Tính độ tương đồng cosine
+            if image:
+                img_similarity = cosine_similarity(img_embedding, stored_img_embedding)[0][0]
+            else:
+                img_similarity = 0  # Không tính điểm ảnh nếu không có hình ảnh
+
+            text_similarity = cosine_similarity(text_embedding, stored_text_embedding)[0][0]
+
+            # Tổng hợp điểm tương đồng
+            overall_similarity = (img_similarity + text_similarity) / (2 if image else 1)
+
             results.append({
                 "title": book["title"],
-                "price": float(book["price"]),
-                "relevance_score": float(similarity),
-                "encoded_image": book["encoded_image"]  # Lấy ảnh mã hóa base64
+                "price": book["price"],
+                "relevance_score": float(overall_similarity),
+                "encoded_image": book["encoded_image"]
             })
 
-        # Sắp xếp kết quả và trả về 5 mục tương đồng nhất
+        # Sắp xếp kết quả theo relevance_score và lấy 5 kết quả đầu tiên
         results = sorted(results, key=lambda x: x['relevance_score'], reverse=True)[:5]
-        return jsonify(results)
+
+        return jsonify(results),print(f"Số lượng tài liệu truy xuất: {len(books)}")
 
     except Exception as e:
-        return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
-
+        print(f"Lỗi: {str(e)}")
+        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
