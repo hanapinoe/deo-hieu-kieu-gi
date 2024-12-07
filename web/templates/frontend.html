@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Search App</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding: 20px;
+        }
+        #results {
+            margin-top: 20px;
+        }
+        .book-result {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+        }
+        .book-result img {
+            width: 100px;
+            height: auto;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Book Search Application</h1>
+        <div class="card p-4">
+            <form id="search-form">
+                <div class="mb-3">
+                    <label for="title" class="form-label">Enter Book Title (Optional)</label>
+                    <input type="text" id="title" class="form-control" placeholder="Type a book title">
+                </div>
+                <div class="mb-3">
+                    <label for="image" class="form-label">Upload Book Cover Image (Optional)</label>
+                    <input type="file" id="image" class="form-control">
+                </div>
+                <button type="button" id="search-btn" class="btn btn-primary">Search</button>
+            </form>
+        </div>
+        <div id="results" class="mt-4">
+            <!-- Results will be shown here -->
+        </div>
+    </div>
+
+    <script>
+        document.getElementById("search-btn").addEventListener("click", async () => {
+            const title = document.getElementById("title").value;
+            const imageFile = document.getElementById("image").files[0];
+
+            let formData = new FormData();
+            if (title) formData.append("title", title);
+            if (imageFile) formData.append("image", imageFile);
+
+            // Check if at least one input is provided
+            if (!title && !imageFile) {
+                alert("Vui lòng cung cấp ít nhất một tiêu đề hoặc hình ảnh.");
+                return;
+            }
+
+            try {
+                const response = await fetch("http://127.0.0.1:5000/search", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(error.error || "Lỗi không xác định từ server.");
+                    return;
+                }
+
+                const data = await response.json();
+
+                // Clear previous results
+                const resultsContainer = document.getElementById('results');
+                resultsContainer.innerHTML = ''; 
+
+                // Handle empty result case
+                if (data.length === 0) {
+                    resultsContainer.innerHTML = '<p>No books found matching your search criteria.</p>';
+                    return;
+                }
+
+                // Render search results
+                data.forEach(book => {
+                    const bookDiv = document.createElement('div');
+                    bookDiv.className = 'book-result';
+
+                    const titleElement = document.createElement('h3');
+                    titleElement.textContent = book.title;
+
+                    const priceElement = document.createElement('p');
+                    priceElement.textContent = `Price: ${book.price}`;
+
+                    const imageElement = document.createElement('img');
+                    imageElement.src = `data:image/jpeg;base64,${book.encoded_image}`;
+
+                    // Append elements to book div
+                    bookDiv.appendChild(titleElement);
+                    bookDiv.appendChild(priceElement);
+                    bookDiv.appendChild(imageElement);
+
+                    // Append book div to results container
+                    resultsContainer.appendChild(bookDiv);
+                });
+            } catch (error) {
+                alert("Lỗi kết nối đến server.");
+                console.error("Error:", error);
+            }
+        });
+    </script>
+</body>
+</html>
