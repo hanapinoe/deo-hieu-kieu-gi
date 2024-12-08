@@ -1,19 +1,14 @@
-from pymongo import MongoClient
+from pymongo import MongoClient as PyMongoClient  
 
-class MongoDBClient:
-    def __init__(self, uri='mongodb://localhost:27017/', db_name='book_search', collection_name='books'):
-        try:
-            self.client = MongoClient(uri)
-            self.client.admin.command('ping')
-            self.db = self.client[db_name]
-            self.collection = self.db[collection_name]
-            print("Kết nối với MongoDB thành công.")
-        except Exception as e:
-            print(f"Không thể kết nối với MongoDB: {str(e)}")
-            exit(1)
+class CustomMongoClient:
+    def __init__(self, uri):
+        self.client = PyMongoClient(uri)  
+        self.db = self.client['book_search']  
 
-    def get_books(self):
-        return list(self.collection.find())
+    def get_db(self):
+        """Trả về database."""
+        return self.db
 
-    def save_book(self, book_data):
-        self.collection.insert_one(book_data)
+    def close(self):
+        """Đóng kết nối với MongoDB."""
+        self.client.close()

@@ -1,63 +1,73 @@
 from flask import Flask, request, jsonify, render_template
-from flask_cors import CORS
-import tempfile
-import pytesseract
-from mongo_client import MongoDBClient
+from siamese_model import SiameseModel
 from book_search import BookSearch
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
+from mongo_client import CustomMongoClient
+import pytesseract
+from PIL import Image
+import numpy as np
 
-# Khởi tạo Flask app
 app = Flask(__name__)
-CORS(app)
 
-# Khởi tạo đối tượng MongoDBClient và BookSearch
-mongo_client = MongoDBClient()
-book_search = BookSearch()
+# Đảm bảo bạn đã có đường dẫn đến mô hình và vectorizer
+MODEL_PATH = 'D:/Project/model1/siamese_model.pth'  # Đảm bảo đường dẫn chính xác
+VECTORIZER_PATH = 'D:/Project/model1/vectorizer.pkl'  # Đảm bảo đường dẫn chính xác
+
+# Khởi tạo mô hình Siamese
+siamese_model = SiameseModel(model_path=MODEL_PATH, vectorizer_path=VECTORIZER_PATH)
+
+# Khởi tạo đối tượng tìm kiếm sách
+book_search = BookSearch(model=siamese_model)
+
+# Kết nối MongoDB thông qua MongoClient (sửa kết nối)
+mongo_client = CustomMongoClient('mongodb://localhost:27017/')
+db = mongo_client.get_db()  # Lấy database 'book_search'
+book_collection = db['books']  # Lấy collection 'books'
+
+def extract_text_from_image(image_path):
+    """Nhận diện văn bản từ hình ảnh sử dụng OCR (Tesseract)"""
+    image = Image.open(image_path)
+    text = pytesseract.image_to_string(image)
+    return text.strip()
 
 @app.route('/')
-def index():
+def home():
     return render_template('frontend.html')
 
 @app.route('/search', methods=['POST'])
 def search_books():
-    try:
-        image = request.files.get('image')
-        title = request.form.get('title')
+    data = request.form
+    image_path = data.get('image_path', None)
+    title_query = data.get('title', None)
 
-        if not image and not title:
-            return jsonify({"error": "Vui lòng cung cấp hình ảnh hoặc tiêu đề."}), 400
+    if not image_path and not title_query:
+        return jsonify({"error": "Cần cung cấp ít nhất một trong hai: 'image_path' hoặc 'title'"}), 400
 
-        if image:
-            # Xử lý hình ảnh
-            with tempfile.NamedTemporaryFile(delete=False) as temp_image:
-                image.save(temp_image.name)
-                
-                pytesseract.pytesseract.tesseract_cmd = r'c:\users\hon\appdata\local\packages\pythonsoftwarefoundation.python.3.11_qbz5n2kfra8p0\localcache\local-packages\python311\scripts\pytesseract.exe'
-                # OCR để lấy văn bản từ hình ảnh
-                ocr_text = pytesseract.image_to_string(temp_image.name, lang='vie').strip()
+    # Nếu có hình ảnh, sử dụng OCR để nhận diện văn bản từ hình ảnh
+    if image_path:
+        extracted_text = extract_text_from_image(image_path)
+        title_query = title_query or extracted_text  # Nếu không có tiêu đề từ truy vấn, sử dụng OCR
 
-                # Trích xuất embedding ảnh và văn bản
-                img_embedding = book_search.create_image_embedding(temp_image.name)
-                text_embedding = book_search.create_text_embedding(ocr_text)
+    img_embedding = None
+    text_embedding = None
 
-        elif title:
-            text_embedding = book_search.create_text_embedding(title)
-            img_embedding = None
+    if image_path:
+        img_embedding = siamese_model.create_image_embedding(image_path)
+    
+    if title_query:
+        text_embedding = siamese_model.create_text_embedding(title_query)
 
-        # Tìm kiếm trong cơ sở dữ liệu
-        books = mongo_client.get_books()
-        if not books:
-            return jsonify({"error": "Không tìm thấy sách trong cơ sở dữ liệu."}), 404
+    books = book_collection.find()  # Lấy tất cả sách từ collection 'books'
+    books = list(books)  # Chuyển dữ liệu từ MongoDB thành danh sách
 
-        # Tìm kiếm sách
-        results = book_search.search_books(books, img_embedding, text_embedding)
+    # Tạo embedding cho các sách trong cơ sở dữ liệu
+    for book in books:
+        book['image_embedding'] = np.array(book['image_embedding']).reshape(1, -1)
+        book['text_embedding'] = np.array(book['text_embedding']).reshape(1, -1)
 
-        return jsonify(results)
+    # Tìm kiếm sách dựa trên embedding
+    results = book_search.search_books(books, img_embedding, text_embedding)
 
-    except Exception as e:
-        print(f"Lỗi: {str(e)}")
-        return jsonify({"error": f"Lỗi: {str(e)}"}), 500
+    return jsonify({"results": results})
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True)
