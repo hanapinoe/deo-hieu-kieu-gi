@@ -1,0 +1,12 @@
+# Python Libraries
+Flask
+pymongo
+Werkzeug
+numpy
+pandas
+torch
+torchvision
+scikit-learn
+
+# Triton Inference Server
+# Use Docker: nvcr.io/nvidia/tritonserver:<version>-min
