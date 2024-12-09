@@ -24,7 +24,7 @@ class ContrastiveDataset(Dataset):
 
 # Siamese Network class
 class SiameseNetwork(nn.Module):
-    def __init__(self, img_embedding_dim, text_embedding_dim, output_dim=128):
+    def __init__(self, img_embedding_dim=2048, text_embedding_dim=128, output_dim=128):
         super(SiameseNetwork, self).__init__()
         self.img_transform = nn.Sequential(
             nn.Linear(img_embedding_dim, output_dim),
@@ -32,7 +32,7 @@ class SiameseNetwork(nn.Module):
             nn.ReLU(),
         )
         self.text_transform = nn.Sequential(
-            nn.Linear(text_embedding_dim, output_dim),
+            nn.Linear(text_embedding_dim, output_dim),  # Đầu vào là 128 (TF-IDF vector)
             nn.BatchNorm1d(output_dim),
             nn.ReLU(),
         )
@@ -54,6 +54,7 @@ class SiameseNetwork(nn.Module):
         output1 = self.forward_once(img_embedding)
         output2 = self.forward_once(text_embedding)
         return output1, output2
+
 
 # Contrastive Loss class
 class ContrastiveLoss(nn.Module):
@@ -80,26 +81,31 @@ train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
 # Initialize model
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 img_embedding_dim = 2048
 text_embedding_dim = train_pairs[0][1].shape[0]
-model = SiameseNetwork(img_embedding_dim, text_embedding_dim, output_dim=128)
+model = SiameseNetwork(img_embedding_dim, text_embedding_dim, output_dim=128).to(device)
 
-criterion = ContrastiveLoss(margin=1.0)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)  # Reduced learning rate
+criterion = ContrastiveLoss(margin=1.0).to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
 # Train model
-num_epochs = 100  # Reduce epochs for faster convergence
+num_epochs = 100
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
     for img_emb, text_emb, label in train_loader:
+        img_emb, text_emb, label = img_emb.to(device), text_emb.to(device), label.to(device)
+        
         optimizer.zero_grad()
         output1, output2 = model(img_emb, text_emb)
         loss = criterion(output1, output2, label)
         loss.backward()
         optimizer.step()
         running_loss += loss.item()
-    print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss / len(train_loader):.4f}")
+    
+    avg_loss = running_loss / len(train_loader)
+    print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {avg_loss:.4f}")
 
 # Save model
 torch.save(model.state_dict(), 'siamese_model.pth')
@@ -111,6 +117,8 @@ y_true = []
 y_pred = []
 with torch.no_grad():
     for img_emb, text_emb, label in test_loader:
+        img_emb, text_emb, label = img_emb.to(device), text_emb.to(device), label.to(device)
+        
         output1, output2 = model(img_emb, text_emb)
         euclidean_distance = nn.functional.pairwise_distance(output1, output2)
         predictions = (euclidean_distance < 0.7).float()  # Adjust threshold

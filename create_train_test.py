@@ -18,14 +18,14 @@ print(f"Đã tải CSV với các cột: {df.columns.tolist()}")
 if 'image path' not in df.columns or 'title' not in df.columns:
     raise ValueError("'image path' hoặc 'title' không có trong file CSV.")
 
-# Hàm tạo embeddings cho hình ảnh (Thay bằng logic thực tế của bạn)
+# Hàm tạo embeddings cho hình ảnh (thay bằng logic thực tế của bạn)
 def create_image_embedding(image_path):
-    # Placeholder: Trả về vector ngẫu nhiên
+    # Placeholder: Trả về vector embedding có kích thước 2048 (đúng với mô hình ResNet-50)
     return np.random.rand(2048)
 
-# Hàm tạo embeddings cho văn bản (Thay bằng logic thực tế của bạn)
+# Hàm tạo embeddings cho văn bản (thay bằng logic thực tế của bạn)
 def create_text_embedding(title):
-    # Placeholder: Trả về vector ngẫu nhiên
+    # Placeholder: Trả về vector embedding có kích thước 128
     return np.random.rand(128)
 
 # Chuẩn bị các cặp hình ảnh và văn bản
