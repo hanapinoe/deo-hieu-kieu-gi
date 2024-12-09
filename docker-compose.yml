@@ -1,0 +1,20 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+
+
+  # triton:
+  #   image: nvcr.io/nvidia/tritonserver:23.01-py3  
+  #   container_name: triton
+  #   ports:
+  #     - "8001:8001"  
+  #     - "8000:8000"  
+  #   volumes:
+  #     - ./model_repository:/models  
+  #   command: ["tritonserver", "--model-repository=/models"] 
