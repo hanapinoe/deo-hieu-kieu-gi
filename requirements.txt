@@ -1,7 +1,7 @@
 # Python Libraries
 flask
-torch
-torchvision
+torch[slim]
+torchvision[slim]
 Pillow
 numpy
 joblib

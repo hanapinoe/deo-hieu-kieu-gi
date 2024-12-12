@@ -93,7 +93,7 @@ def search_books():
                 "encoded_image": 1,
                 "_id": 0
             })
-            results = BookSearch.search_books(books, img_embedding, text_embedding) # type: ignore
+            results = BookSearch.search_books(books, img_embedding, text_embedding) 
         except Exception as e:
             return jsonify({"error": f"Lỗi khi truy vấn MongoDB hoặc tìm kiếm: {str(e)}"}), 500
 
